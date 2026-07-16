@@ -1,0 +1,38 @@
+#!/bin/bash
+# 飞牛 IPTV 管家 生命周期脚本
+# FnOS AppCenter 在 start/stop 时由 docker-project 自行拉起/停止 compose，
+# 因此 start/stop 这里直接放行；status 检查 UI HTTP 端口是否在线。
+set -u
+
+HEALTH_URL="http://127.0.0.1:8510/"
+
+http_ok() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1
+    return $?
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget -q -T 3 -O /dev/null "$HEALTH_URL" >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+case "$1" in
+  start)
+    # docker 应用由 AppCenter 依据 config/resource 的 docker-project 拉起
+    exit 0
+    ;;
+  stop)
+    exit 0
+    ;;
+  status)
+    if http_ok; then
+      exit 0
+    fi
+    exit 3
+    ;;
+  *)
+    exit 1
+    ;;
+esac

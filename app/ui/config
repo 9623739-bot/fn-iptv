@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "fn-iptv.Application": {
+            "title": "飞牛 IPTV 管家",
+            "icon": "images/icon_256.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "8510",
+            "url": "/",
+            "allUsers": false
+        }
+    }
+}

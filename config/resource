@@ -1,0 +1,20 @@
+{
+  "docker-project": {
+    "projects": [
+      {
+        "name": "fn-iptv",
+        "path": "docker"
+      }
+    ]
+  },
+  "data-share": {
+    "shares": [
+      {
+        "name": "fn-iptv"
+      },
+      {
+        "name": "fn-iptv/data"
+      }
+    ]
+  }
+}

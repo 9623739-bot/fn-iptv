@@ -1,0 +1,43 @@
+name: Build FPK
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download fnpack (linux)
+        run: |
+          curl -fsSL -o fnpack https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64
+          chmod +x fnpack
+
+      - name: Build fn-iptv.fpk
+        run: ./fnpack build
+        working-directory: fn-iptv
+
+      - name: Prepare FnDepot naming (x86)
+        run: |
+          cd fn-iptv
+          FPK=$(ls *.fpk | head -1)
+          echo "built: $FPK"
+          cp "$FPK" "fn-iptv_x86.fpk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fn-iptv-fpk
+          path: fn-iptv/*.fpk
+
+      - name: Release on tag
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fn-iptv/*.fpk

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>飞牛 IPTV 管家</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="apple-touch-icon" href="images/icon_256.png" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" src="images/icon_64.png" alt="" />
+      <div>
+        <h1>飞牛 IPTV 管家</h1>
+        <span class="ver">v1.2.10 · FnOS 第三方应用</span>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="btnTokenHelp" class="btn ghost" title="获取咪咕 userId / token 教程">获取 Token 教程</button>
+      <button id="btnTvboxHelp" class="btn ghost" title="TVBox 填写教程">TVBox 教程</button>
+      <button id="btnRefresh" class="btn ghost" title="刷新状态与频道">刷新</button>
+      <button id="btnTheme" class="btn ghost" title="切换主题">明/暗</button>
+      <button id="btnSettings" class="btn ghost" title="设置">设置</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="sources" id="sourceCards"></section>
+
+    <section class="browser">
+      <div class="browser-head">
+        <input id="search" class="search" type="text" placeholder="搜索频道，如 央视 / 湖南 / 体育" />
+      </div>
+      <div class="browser-body">
+        <aside class="cats" id="catList"></aside>
+        <div class="channels" id="channelList"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="player-drawer" id="playerDrawer" aria-hidden="true">
+    <div class="player-inner">
+      <div class="player-head">
+        <span id="playerTitle">未选择频道</span>
+        <div class="player-actions">
+          <button id="btnCopyStream" class="btn ghost sm">复制直链</button>
+          <button id="btnEpgToggle" class="btn ghost sm">节目单</button>
+          <button id="btnClosePlayer" class="btn ghost sm">关闭</button>
+        </div>
+      </div>
+      <div class="player-stage">
+        <video id="video" controls autoplay playsinline></video>
+        <aside class="epg-panel" id="epgPanel" hidden>
+          <h3>节目单 <small id="epgChannel"></small></h3>
+          <div id="epgBody" class="epg-body">未加载</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="settingsModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head"><h2>设置</h2><button class="btn ghost sm" data-close>关闭</button></div>
+      <div class="modal-body">
+        <label>NAS 地址（留空自动探测）<input id="setNas" type="text" placeholder="如 192.168.1.100" /></label>
+        <label>咪咕 userId<input id="setMiguUserId" type="text" autocomplete="off" /></label>
+        <label>咪咕 token<input id="setMiguToken" type="password" autocomplete="off" /></label>
+        <label>清晰度
+          <select id="setMiguRateType">
+            <option value="2">标清</option>
+            <option value="3">高清</option>
+            <option value="4">蓝光</option>
+            <option value="7">原画</option>
+            <option value="9">4K</option>
+          </select>
+          <small class="field-note">备注：高清以上需要开通咪咕会员，部分频道还会受账号权益限制。</small>
+        </label>
+        <div class="setting-block">
+          <span>电视端隐藏分组</span>
+          <div class="check-grid">
+            <label><input type="checkbox" data-hidden-group="体育" /> 体育（含体育-今天/明天）</label>
+            <label><input type="checkbox" data-hidden-group="其他" /> 其他</label>
+          </div>
+          <small class="field-note">只影响 TVBox、m3u、txt 订阅源；后台频道列表仍显示全部频道。</small>
+        </div>
+        <label>EPG 节目单地址<input id="setEpg" type="text" placeholder="/migu/playback.xml" /></label>
+        <div class="modal-foot">
+          <button id="btnResetSettings" class="btn ghost">恢复默认</button>
+          <button id="btnSaveSettings" class="btn primary">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="tokenHelpModal" aria-hidden="true">
+    <div class="modal-card wide">
+      <div class="modal-head"><h2>获取咪咕 userId / token 教程</h2><button class="btn ghost sm" data-close-token>关闭</button></div>
+      <div class="modal-body">
+        <p class="help-note">userId 和 token 只保存在你的 NAS 本机配置里。不要把 token 发给别人，token 相当于你的登录凭据。</p>
+        <div class="tutorial-list">
+          <div><b>1. 打开咪咕官网</b><span>在电脑浏览器打开咪咕视频官网并登录自己的账号。</span><a class="btn sm" href="https://www.miguvideo.com/" target="_blank" rel="noopener">打开官网</a></div>
+          <div><b>2. 打开开发者工具</b><span>按键盘 F12。部分笔记本需要同时按 Fn + F12。</span></div>
+          <div><b>3. 切到 Application / 应用</b><span>Chrome、Edge 浏览器顶部标签里找到 Application；中文界面通常叫“应用”。</span></div>
+          <div><b>4. 找 Cookies</b><span>左侧展开 Storage / 存储，再展开 Cookies，点击 miguvideo.com 相关域名。</span></div>
+          <div><b>5. 找 userinfo</b><span>在右侧 Cookie 表格里找到名称为 userinfo 的这一行。</span></div>
+          <div><b>6. 复制 userinfo 的值</b><span>复制 Value / 值这一整段。它通常由“用户 ID + token”组成。</span></div>
+          <div><b>7. 填到本软件设置里</b><span>把前半部分填到 userId，后半部分填到 token。填写后点保存。</span></div>
+        </div>
+        <p class="help-note">画质说明：不填写只能标清；填写后可用高清；蓝光、原画、4K 需要咪咕 VIP 账号并受频道权益限制。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="tvboxModal" aria-hidden="true">
+    <div class="modal-card wide">
+      <div class="modal-head"><h2>TVBox 使用教程</h2><button class="btn ghost sm" data-close-tvbox>关闭</button></div>
+      <div class="modal-body">
+        <div class="help-steps">
+          <div><b>TVBox 下载地址</b><span>建议下载开源版、官方原版。</span><code>https://github.com/vipshihua/tvbox</code><a class="btn sm" href="https://github.com/vipshihua/tvbox" target="_blank" rel="noopener">打开</a></div>
+          <div><b>1. 数据源地址</b><span>填 TVBox 配置 JSON。</span><code data-tvbox="config"></code><button class="btn sm" data-copy-tvbox="config">复制</button></div>
+          <div><b>2. 直播源地址</b><span>填直播频道列表，推荐 TXT。</span><code data-tvbox="live"></code><button class="btn sm" data-copy-tvbox="live">复制</button></div>
+          <div><b>3. 直播 EPG 地址</b><span>填节目单地址。</span><code data-tvbox="epg"></code><button class="btn sm" data-copy-tvbox="epg">复制</button></div>
+        </div>
+        <p class="help-note">如果 TVBox 只让填一个地址，就只填第 1 个数据源地址；如果有三行，就按上面三项分别填写。</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script src="js/app.js?v=1.2.10"></script>
+</body>
+</html>

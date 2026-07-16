@@ -1,0 +1,46 @@
+# 飞牛 IPTV 管家 - docker-project 编排
+#
+# 默认只启动两个服务：
+#   fn-iptv-ui  管理面板与同源反向代理
+#   migu-video  咪咕视频直播源
+#
+# 开源分发注意：
+#   - 不在包内写死 userId/token，用户在网页设置中填写自己的咪咕凭据。
+#   - 清晰度通过环境变量 MIGU_RATE_TYPE 控制：
+#       2=标清，3=高清，4=蓝光，7=原画，9=4K
+#   - 浏览器兼容优先，默认关闭 H.265；需要时可把 MIGU_ENABLE_H265=true。
+
+services:
+  fn-iptv-ui:
+    image: nginx:alpine
+    container_name: fn-iptv-ui
+    restart: unless-stopped
+    ports:
+      - "8510:8510"
+    volumes:
+      - "../ui/html:/usr/share/nginx/html:ro"
+      - "../ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
+    networks:
+      - fn-iptv-net
+
+  migu-video:
+    image: develop767/migu_video:latest
+    container_name: fn-iptv-migu
+    restart: unless-stopped
+    ports:
+      - "3566:1234"
+    volumes:
+      - "../migu/app.js:/migu/app.js:ro"
+      - "../migu/utils/appUtils.js:/migu/utils/appUtils.js:ro"
+      - "/var/apps/fn-iptv/shares/fn-iptv/migu:/migu-data"
+    environment:
+      - mhost=http://127.0.0.1:1234
+      - FN_IPTV_MIGU_CONFIG=/migu-data/config.json
+      - mrateType=${MIGU_RATE_TYPE:-3}
+      - menableH265=${MIGU_ENABLE_H265:-false}
+    networks:
+      - fn-iptv-net
+
+networks:
+  fn-iptv-net:
+    driver: bridge
