@@ -1,5 +1,5 @@
 appname               = fn-iptv
-version               = 1.2.10
+version               = 1.2.11
 display_name          = 飞牛 IPTV 管家
 desc                  = 飞牛 NAS IPTV 直播源管理面板：咪咕视频源、频道分类浏览、内置播放器、EPG 节目单。userId/token 由用户自行填写，适合开源分发。
 platform              = x86

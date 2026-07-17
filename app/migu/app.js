@@ -276,8 +276,8 @@ const server = http.createServer(async (req, res) => {
       } else if (method === "POST") {
         const oldConfig = loadRuntimeConfig()
         const body = JSON.parse(await readBody(req) || "{}")
-        const nextUserId = String(body.userId || "").trim()
-        const nextToken = String(body.token || "").trim()
+        const nextUserId = String(body.userId || oldConfig.userId || userId || "").trim()
+        const nextToken = String(body.token || oldConfig.token || token || "").trim()
         const nextRateType = normalizeRateType(body.rateType)
         const nextHiddenGroups = Object.prototype.hasOwnProperty.call(body, "hiddenGroups")
           ? parseHiddenGroups(body.hiddenGroups)

@@ -11,7 +11,7 @@
     epg: '/migu/playback.xml'
   };
   var SET = load();
-  var STATE = { channels: [], cats: [], cur: null };
+  var STATE = { channels: [], cats: [], cur: null, serverConfigured: false };
   var EPG = { doc: null, loaded: false, url: '' };
 
   function $(s) { return document.querySelector(s); }
@@ -121,7 +121,7 @@
       return input.getAttribute('data-hidden-group');
     }).join(',');
   }
-  function hasMiguCreds() { return !!(miguUserId() && miguToken()); }
+  function hasMiguCreds() { return STATE.serverConfigured || !!(miguUserId() && miguToken()); }
   function miguM3uUrl() { return '/migu/m3u'; }
   function miguAdminM3uUrl() { return '/migu/m3u?all=1'; }
   function miguTxtUrl() { return '/migu/txt'; }
@@ -162,7 +162,6 @@
     $('#tokenHelpModal').setAttribute('aria-hidden', 'true');
   }
   function saveMiguServerConfig() {
-    if (!hasMiguCreds()) return Promise.resolve();
     return fetch('/migu/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -175,6 +174,12 @@
     }).then(function (r) {
       if (!r.ok) throw new Error('http ' + r.status);
       return r.json();
+    }).then(function (cfg) {
+      STATE.serverConfigured = !!(cfg.ok || cfg.configured || STATE.serverConfigured || (miguUserId() && miguToken()));
+      if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
+      if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
+      save();
+      return cfg;
     });
   }
   function loadMiguServerConfig() {
@@ -182,11 +187,14 @@
       if (!r.ok) throw new Error('http ' + r.status);
       return r.json();
     }).then(function (cfg) {
+      STATE.serverConfigured = !!cfg.configured;
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       save();
       return cfg;
-    }).catch(function () {});
+    }).catch(function () {
+      STATE.serverConfigured = !!(miguUserId() && miguToken());
+    });
   }
 
   function parseM3U(text) {
@@ -460,6 +468,9 @@
     loadMiguServerConfig().then(function () {
       $('#setMiguRateType').value = miguRateType();
       setHiddenGroupChecks();
+      if (STATE.serverConfigured && !$('#setMiguUserId').value && !$('#setMiguToken').value) {
+        $('#setMiguToken').placeholder = '已在服务端保存，留空不修改';
+      }
     });
   }
   function closeSettings() {
@@ -498,8 +509,10 @@
     applyTheme(localStorage.getItem('fn-iptv-theme') || 'dark');
     save();
     renderSources();
-    loadChannels();
-    checkStatus();
+    loadMiguServerConfig().then(function () {
+      loadChannels();
+      checkStatus();
+    });
     $('#btnTokenHelp').onclick = openTokenHelp;
     $('#btnTvboxHelp').onclick = openTvboxHelp;
     $('#btnRefresh').onclick = function () { loadChannels(); checkStatus(); toast('已刷新'); };
