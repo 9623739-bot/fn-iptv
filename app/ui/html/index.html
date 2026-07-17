@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.13 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.14 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -77,7 +77,10 @@
     <div class="modal-card">
       <div class="modal-head"><h2>设置</h2><button class="btn ghost sm" data-close>关闭</button></div>
       <div class="modal-body">
-        <label>NAS 地址（留空自动探测）<input id="setNas" type="text" placeholder="如 192.168.1.100" /></label>
+        <label>访问端口
+          <input id="setPort" type="number" min="1" max="65535" placeholder="8510" />
+          <small class="field-note">用于生成 TVBox、m3u、txt 复制地址；改端口后这里填写新的访问端口。</small>
+        </label>
         <label>咪咕 userId<input id="setMiguUserId" type="text" autocomplete="off" /></label>
         <label>咪咕 token<input id="setMiguToken" type="password" autocomplete="off" placeholder="已保存时可留空不修改" /></label>
         <label>清晰度
@@ -143,6 +146,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.13"></script>
+  <script src="js/app.js?v=1.2.14"></script>
 </body>
 </html>

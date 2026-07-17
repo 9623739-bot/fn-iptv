@@ -2,12 +2,12 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.13';
+  var APP_VERSION = '1.2.14';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
   var DEFAULTS = {
-    nas: '',
+    port: '',
     miguUserId: '',
     miguToken: '',
     miguRateType: '3',
@@ -33,6 +33,12 @@
       delete cfg.srcCtxt;
       delete cfg.def;
 
+      if (!cfg.port && old.nas) {
+        var portMatch = String(old.nas).match(/:(\d{1,5})(?:\/)?$/);
+        if (portMatch) cfg.port = portMatch[1];
+      }
+      delete cfg.nas;
+
       if (old.epg === 'http://epg.51zmt.top:8000/e.xml' || old.epg === '/epg/e.xml') cfg.epg = DEFAULTS.epg;
       return cfg;
     } catch (e) {
@@ -41,9 +47,10 @@
   }
   function save() { localStorage.setItem('fn-iptv', JSON.stringify(SET)); }
   function nasBase() {
-    var host = (SET.nas && SET.nas.trim()) ? SET.nas.trim().replace(/\/+$/, '') : location.host;
-    if (/^https?:\/\//.test(host)) return host;
-    return 'http://' + host + (host.indexOf(':') >= 0 ? '' : ':8510');
+    var protocol = location.protocol === 'https:' ? 'https:' : 'http:';
+    var hostname = location.hostname || location.host.split(':')[0];
+    var port = String(SET.port || '').trim() || location.port || '8510';
+    return protocol + '//' + hostname + (port ? ':' + port : '');
   }
   function buildUrl(path) {
     if (/^https?:\/\//.test(path)) return path;
@@ -504,7 +511,7 @@
   }
 
   function openSettings() {
-    $('#setNas').value = SET.nas || '';
+    $('#setPort').value = SET.port || location.port || '8510';
     $('#setMiguUserId').value = SET.miguUserId || '';
     $('#setMiguToken').value = SET.miguToken || '';
     $('#setMiguRateType').value = miguRateType();
@@ -525,7 +532,7 @@
     $('#settingsModal').setAttribute('aria-hidden', 'true');
   }
   function saveSettings() {
-    SET.nas = $('#setNas').value.trim();
+    SET.port = $('#setPort').value.trim();
     SET.miguUserId = $('#setMiguUserId').value.trim();
     SET.miguToken = $('#setMiguToken').value.trim();
     SET.miguRateType = $('#setMiguRateType').value || '3';
