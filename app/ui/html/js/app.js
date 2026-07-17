@@ -2,6 +2,10 @@
 (function () {
   'use strict';
 
+  var APP_VERSION = '1.2.12';
+  var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
+  var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
+
   var DEFAULTS = {
     nas: '',
     miguUserId: '',
@@ -99,6 +103,49 @@
       if (!validate || validate(txt)) return { url: url, text: txt };
       throw new Error('invalid response');
     });
+  }
+
+  function compareVersions(a, b) {
+    var pa = String(a || '').split('.').map(function (n) { return parseInt(n, 10) || 0; });
+    var pb = String(b || '').split('.').map(function (n) { return parseInt(n, 10) || 0; });
+    var len = Math.max(pa.length, pb.length);
+    for (var i = 0; i < len; i++) {
+      var x = pa[i] || 0;
+      var y = pb[i] || 0;
+      if (x > y) return 1;
+      if (x < y) return -1;
+    }
+    return 0;
+  }
+  function parseManifestVersion(text) {
+    var m = String(text || '').match(/^\s*version\s*=\s*([0-9]+(?:\.[0-9]+){1,3})\s*$/m);
+    return m ? m[1] : '';
+  }
+  function decodeBase64Utf8(content) {
+    var binary = atob(String(content || '').replace(/\s/g, ''));
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  function checkForUpdates() {
+    var dismissed = localStorage.getItem('fn-iptv-update-dismissed');
+    fetch(UPDATE_MANIFEST_API, { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('update http ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      var remoteVersion = parseManifestVersion(decodeBase64Utf8(data.content));
+      if (!remoteVersion || compareVersions(remoteVersion, APP_VERSION) <= 0) return;
+      if (dismissed === remoteVersion) return;
+      $('#updateText').textContent = '当前版本 v' + APP_VERSION + '，GitHub 最新版本 v' + remoteVersion + '。';
+      $('#btnDownloadUpdate').href = UPDATE_DOWNLOAD_URL;
+      $('#updateBanner').hidden = false;
+    }).catch(function () {});
+  }
+  function dismissUpdate() {
+    var text = $('#updateText').textContent || '';
+    var m = text.match(/最新版本 v([0-9]+(?:\.[0-9]+){1,3})/);
+    if (m) localStorage.setItem('fn-iptv-update-dismissed', m[1]);
+    $('#updateBanner').hidden = true;
   }
 
   function miguUserId() { return (SET.miguUserId || '').trim(); }
@@ -509,12 +556,14 @@
     applyTheme(localStorage.getItem('fn-iptv-theme') || 'dark');
     save();
     renderSources();
+    checkForUpdates();
     loadMiguServerConfig().then(function () {
       loadChannels();
       checkStatus();
     });
     $('#btnTokenHelp').onclick = openTokenHelp;
     $('#btnTvboxHelp').onclick = openTvboxHelp;
+    $('#btnDismissUpdate').onclick = dismissUpdate;
     $('#btnRefresh').onclick = function () { loadChannels(); checkStatus(); toast('已刷新'); };
     $('#btnTheme').onclick = toggleTheme;
     $('#btnSettings').onclick = openSettings;

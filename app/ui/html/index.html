@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.11 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.12 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -29,6 +29,17 @@
   </header>
 
   <main class="layout">
+    <section class="update-banner" id="updateBanner" hidden>
+      <div>
+        <b>发现新版本</b>
+        <span id="updateText">GitHub 有可用更新。</span>
+      </div>
+      <div class="update-actions">
+        <a class="btn primary sm" id="btnDownloadUpdate" href="https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk" target="_blank" rel="noopener">下载更新</a>
+        <a class="btn sm" href="https://github.com/9623739-bot/fn-iptv" target="_blank" rel="noopener">查看 GitHub</a>
+        <button class="btn ghost sm" id="btnDismissUpdate">忽略</button>
+      </div>
+    </section>
     <section class="sources" id="sourceCards"></section>
 
     <section class="browser">
@@ -132,6 +143,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.11"></script>
+  <script src="js/app.js?v=1.2.12"></script>
 </body>
 </html>

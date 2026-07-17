@@ -55,6 +55,16 @@ body {
 
 .layout { padding: 20px 22px; display: flex; flex-direction: column; gap: 20px; flex: 1; }
 
+.update-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px 16px; border: 1px solid #f59e0b66; border-radius: var(--radius);
+  background: #f59e0b18; color: var(--text); box-shadow: var(--shadow);
+}
+.update-banner[hidden] { display: none; }
+.update-banner b { display: block; font-size: 15px; margin-bottom: 3px; }
+.update-banner span { color: var(--text-dim); font-size: 13px; }
+.update-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 .sources { display: grid; grid-template-columns: 1fr; gap: 16px; }
 .card {
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -161,6 +171,7 @@ body {
   .epg-panel { border-left: none; border-top: 1px solid var(--border); max-height: 200px; }
   .topbar { align-items: flex-start; gap: 12px; flex-direction: column; }
   .top-actions { flex-wrap: wrap; }
+  .update-banner { align-items: flex-start; flex-direction: column; }
   .check-grid { grid-template-columns: 1fr; }
   .help-steps > div { grid-template-columns: 1fr; }
   .tutorial-list > div { grid-template-columns: 1fr; }
