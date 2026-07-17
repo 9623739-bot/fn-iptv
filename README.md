@@ -8,11 +8,12 @@
 
 当前版本：`v1.2.10`
 
-推荐下载：
+推荐下载（点击后会直接下载）：
 
-- [fn-iptv_x86.fpk](./fn-iptv_x86.fpk)
+- [fn-iptv_x86.fpk](https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk)
+- [fn-iptv.fpk](https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv.fpk)
 
-飞牛 x86 设备优先使用 `fn-iptv_x86.fpk`。
+两个安装包内容一致，飞牛 x86 设备优先使用 `fn-iptv_x86.fpk`。如果浏览器没有自动下载，请右键链接选择“另存为”。
 
 ## 安装方法
 
