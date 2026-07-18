@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.14 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.15 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -56,7 +56,10 @@
   <div class="player-drawer" id="playerDrawer" aria-hidden="true">
     <div class="player-inner">
       <div class="player-head">
-        <span id="playerTitle">未选择频道</span>
+        <div class="player-title">
+          <span id="playerTitle">未选择频道</span>
+          <small id="playerResolution">未播放</small>
+        </div>
         <div class="player-actions">
           <button id="btnCopyStream" class="btn ghost sm">复制直链</button>
           <button id="btnEpgToggle" class="btn ghost sm">节目单</button>
@@ -146,6 +149,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.14"></script>
+  <script src="js/app.js?v=1.2.15"></script>
 </body>
 </html>

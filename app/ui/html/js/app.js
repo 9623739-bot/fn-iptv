@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.14';
+  var APP_VERSION = '1.2.15';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -90,6 +90,25 @@
   }
   function cleanStreamUrl(url) {
     return String(url || '').replace(/\$[^?#]*$/, '');
+  }
+  function resolutionLabel(width, height) {
+    width = parseInt(width, 10) || 0;
+    height = parseInt(height, 10) || 0;
+    if (!width || !height) return '';
+    var quality = '标清';
+    if (height >= 2160 || width >= 3840) quality = '4K';
+    else if (height >= 1080 || width >= 1920) quality = '1080P';
+    else if (height >= 720 || width >= 1280) quality = '720P';
+    return width + 'x' + height + ' · ' + quality;
+  }
+  function setPlayerResolution(text) {
+    var el = $('#playerResolution');
+    if (el) el.textContent = text || '分辨率检测中';
+  }
+  function updateVideoResolution() {
+    var v = $('#video');
+    var label = resolutionLabel(v.videoWidth, v.videoHeight);
+    if (label) setPlayerResolution('实际分辨率：' + label);
   }
   function parseXmltvTime(s) {
     var m = String(s || '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
@@ -410,6 +429,9 @@
   }
   function playUrl(url) {
     var v = $('#video');
+    setPlayerResolution('分辨率检测中');
+    v.onloadedmetadata = updateVideoResolution;
+    v.onresize = updateVideoResolution;
     if (hls) {
       try { hls.destroy(); } catch (e) {}
       hls = null;
@@ -419,6 +441,19 @@
         hls = new window.Hls();
         hls.loadSource(url);
         hls.attachMedia(v);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, function (e, d) {
+          var levels = (d && d.levels) || [];
+          var best = levels.slice().sort(function (a, b) {
+            return (b.height || 0) - (a.height || 0);
+          })[0];
+          var label = best && resolutionLabel(best.width, best.height);
+          if (label) setPlayerResolution('最高可用：' + label);
+        });
+        hls.on(window.Hls.Events.LEVEL_SWITCHED, function (e, d) {
+          var level = hls && hls.levels ? hls.levels[d.level] : null;
+          var label = level && resolutionLabel(level.width, level.height);
+          if (label) setPlayerResolution('当前分辨率：' + label);
+        });
         hls.on(window.Hls.Events.ERROR, function (e, d) { if (d && d.fatal) toast('该频道暂时无法播放'); });
       } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
         v.src = url;
@@ -433,6 +468,9 @@
   function closePlayer() {
     var v = $('#video');
     v.pause();
+    setPlayerResolution('未播放');
+    v.onloadedmetadata = null;
+    v.onresize = null;
     if (v.src) v.removeAttribute('src');
     v.load();
     if (hls) {
