@@ -1,10 +1,23 @@
 ﻿import { get302URL, getAndroidURL, getAndroidURL720p, printLoginInfo } from "./androidURL.js";
+import { createHash } from "node:crypto";
 import { readFileSync } from "./fileUtil.js";
 import { host, pass, rateType as defaultRateType, token, userId } from "../config.js";
 import { printDebug, printGreen, printGrey, printRed, printYellow } from "./colorOut.js";
 
 // url缓存 降低请求频率
 const urlCache = {}
+
+function cacheScope(urlUserId, urlToken) {
+  if (!urlUserId || !urlToken) return "anonymous"
+  return createHash("sha256").update(`${urlUserId}:${urlToken}`).digest("hex").slice(0, 16)
+}
+
+function clearChannelCache() {
+  Object.keys(urlCache).forEach((key) => {
+    delete urlCache[key]
+  })
+  printGreen("已清空播放缓存")
+}
 
 function interfaceStr(url, headers, urlUserId, urlToken) {
 
@@ -89,7 +102,7 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
     printGrey("无参数传入")
   }
 
-  const cacheKey = `${pid}:${params}:${selectedRateType}`
+  const cacheKey = `${pid}:${params}:${selectedRateType}:${cacheScope(urlUserId, urlToken)}`
 
   if (isNaN(pid)) {
     result.desc = "地址格式错误"
@@ -211,4 +224,4 @@ function channelCache(cacheKey, pid, params) {
   return cache
 }
 
-export { interfaceStr, channel, channelCache }
+export { interfaceStr, channel, channelCache, clearChannelCache }

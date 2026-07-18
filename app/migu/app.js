@@ -5,7 +5,7 @@ import { getDateTimeStr } from "./utils/time.js";
 import update from "./utils/updateData.js";
 import { printBlue, printGreen, printMagenta, printRed } from "./utils/colorOut.js";
 import { delay } from "./utils/fetchList.js";
-import { channel, interfaceStr } from "./utils/appUtils.js";
+import { channel, clearChannelCache, interfaceStr } from "./utils/appUtils.js";
 
 // 运行时长
 var hours = 0
@@ -287,6 +287,7 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ error: "missing userId or token" }))
         } else {
           saveRuntimeConfig({ userId: nextUserId, token: nextToken, rateType: nextRateType, hiddenGroups: nextHiddenGroups })
+          clearChannelCache()
           res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
           res.end(JSON.stringify({ ok: true, rateType: nextRateType, hiddenGroups: nextHiddenGroups.join(",") }))
         }
