@@ -135,6 +135,16 @@ body {
 .modal-body label.row { flex-direction: row; align-items: center; justify-content: space-between; }
 .modal-body input, .modal-body select { padding: 9px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); font-size: 14px; }
 .setting-block { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.restart-panel {
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg-soft);
+}
+.restart-panel summary {
+  cursor: pointer; color: var(--text); font-weight: 600; list-style: none;
+}
+.restart-panel summary::-webkit-details-marker { display: none; }
+.restart-panel summary::after { content: "展开"; float: right; color: var(--text-dim); font-weight: 400; }
+.restart-panel[open] summary { margin-bottom: 8px; }
+.restart-panel[open] summary::after { content: "收起"; }
 .restart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .check-grid label {

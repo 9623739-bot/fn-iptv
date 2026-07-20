@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.24';
+  var APP_VERSION = '1.2.25';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -199,20 +199,19 @@
   function applyCombinedMiguCredential(value) {
     var parsed = splitMiguCredential(value);
     if (!parsed) return false;
-    $('#setMiguUserId').value = parsed.userId;
-    $('#setMiguToken').value = parsed.token;
+    SET.miguUserId = parsed.userId;
+    SET.miguToken = parsed.token;
     return true;
   }
-  function bindCombinedMiguCredentialInput(input) {
-    input.addEventListener('paste', function (e) {
+  function combinedMiguCredential() {
+    return miguUserId() && miguToken() ? miguUserId() + '|' + miguToken() : '';
+  }
+  function bindCombinedMiguCredentialInput() {
+    $('#setMiguCredential').addEventListener('paste', function (e) {
       var text = e.clipboardData && e.clipboardData.getData('text');
-      if (applyCombinedMiguCredential(text)) {
-        e.preventDefault();
-        toast('已自动分割 userId 和 token');
+      if (splitMiguCredential(text)) {
+        setTimeout(function () { toast('已识别 userId 和 token'); }, 0);
       }
-    });
-    input.addEventListener('input', function () {
-      applyCombinedMiguCredential(input.value);
     });
   }
   function miguRateType() { return String(SET.miguRateType || 'auto'); }
@@ -664,8 +663,7 @@
 
   function openSettings() {
     $('#setPort').value = SET.port || location.port || '8510';
-    $('#setMiguUserId').value = SET.miguUserId || '';
-    $('#setMiguToken').value = SET.miguToken || '';
+    $('#setMiguCredential').value = combinedMiguCredential();
     $('#setMiguRateType').value = miguRateType();
     $('#setRestartInterval').value = SET.restartIntervalHours || '';
     $('#setRestartScheduleType').value = normalizeScheduleType(SET.restartScheduleType);
@@ -686,8 +684,8 @@
       $('#setRestartTime').value = SET.restartScheduleTime || '04:00';
       updateRestartScheduleFields();
       setHiddenGroupChecks();
-      if (STATE.serverConfigured && !$('#setMiguUserId').value && !$('#setMiguToken').value) {
-        $('#setMiguToken').placeholder = '已在服务端保存，留空不修改';
+      if (STATE.serverConfigured && !$('#setMiguCredential').value) {
+        $('#setMiguCredential').placeholder = '已在服务端保存，留空不修改';
       }
     });
   }
@@ -697,10 +695,16 @@
   }
   function saveSettings() {
     SET.port = $('#setPort').value.trim();
-    applyCombinedMiguCredential($('#setMiguUserId').value);
-    applyCombinedMiguCredential($('#setMiguToken').value);
-    SET.miguUserId = $('#setMiguUserId').value.trim();
-    SET.miguToken = $('#setMiguToken').value.trim();
+    var credential = $('#setMiguCredential').value.trim();
+    if (credential) {
+      var parsed = splitMiguCredential(credential);
+      if (!parsed) {
+        toast('咪咕凭据格式应为 userId|token');
+        return;
+      }
+      SET.miguUserId = parsed.userId;
+      SET.miguToken = parsed.token;
+    }
     SET.miguRateType = $('#setMiguRateType').value || 'auto';
     SET.miguHiddenGroups = readHiddenGroupChecks();
     SET.epg = $('#setEpg').value.trim();
@@ -747,8 +751,7 @@
     $('#btnTheme').onclick = toggleTheme;
     $('#btnSettings').onclick = openSettings;
     $('#btnSaveSettings').onclick = saveSettings;
-    bindCombinedMiguCredentialInput($('#setMiguUserId'));
-    bindCombinedMiguCredentialInput($('#setMiguToken'));
+    bindCombinedMiguCredentialInput();
     $('#btnRestartNow').onclick = restartNow;
     $('#setRestartScheduleType').onchange = updateRestartScheduleFields;
     $('#btnResetSettings').onclick = function () {

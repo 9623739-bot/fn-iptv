@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.24 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.25 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -85,8 +85,10 @@
           <input id="setPort" type="number" min="1" max="65535" placeholder="8510" />
           <small class="field-note">用于生成 TVBox、m3u、txt 复制地址；改端口后这里填写新的访问端口。</small>
         </label>
-        <label>咪咕 userId<input id="setMiguUserId" type="text" autocomplete="off" placeholder="可直接粘贴 userId|token" /></label>
-        <label>咪咕 token<input id="setMiguToken" type="password" autocomplete="off" placeholder="可留空不修改，或粘贴 userId|token" /></label>
+        <label>咪咕凭据
+          <input id="setMiguCredential" type="password" autocomplete="off" placeholder="userId|token" />
+          <small class="field-note">使用方法：把咪咕官方给出的完整凭据粘贴到这里，格式为 userId|token；已保存时留空不修改。</small>
+        </label>
         <label>清晰度
           <select id="setMiguRateType">
             <option value="auto">自动（4K → 标清）</option>
@@ -107,8 +109,8 @@
           <small class="field-note">只影响 TVBox、m3u、txt 订阅源；后台频道列表仍显示全部频道。</small>
         </div>
         <label>EPG 节目单地址<input id="setEpg" type="text" placeholder="/migu/playback.xml" /></label>
-        <div class="setting-block">
-          <span>重启设置</span>
+        <details class="setting-block restart-panel">
+          <summary>重启设置</summary>
           <div class="restart-grid">
             <label>每隔 N 小时重启<input id="setRestartInterval" type="number" min="0" max="720" placeholder="0 为关闭" /></label>
             <label>计划重启
@@ -135,7 +137,7 @@
           </div>
           <small class="field-note">只重启咪咕源服务；“每隔 N 小时”和“计划重启”会同时生效，谁先到时间就先执行。</small>
           <button id="btnRestartNow" class="btn ghost">立即重启咪咕源服务</button>
-        </div>
+        </details>
         <div class="modal-foot">
           <button id="btnResetSettings" class="btn ghost">恢复默认</button>
           <button id="btnSaveSettings" class="btn primary">保存</button>
@@ -190,6 +192,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.24"></script>
+  <script src="js/app.js?v=1.2.25"></script>
 </body>
 </html>
