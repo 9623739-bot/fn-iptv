@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.23 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.24 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -85,8 +85,8 @@
           <input id="setPort" type="number" min="1" max="65535" placeholder="8510" />
           <small class="field-note">用于生成 TVBox、m3u、txt 复制地址；改端口后这里填写新的访问端口。</small>
         </label>
-        <label>咪咕 userId<input id="setMiguUserId" type="text" autocomplete="off" /></label>
-        <label>咪咕 token<input id="setMiguToken" type="password" autocomplete="off" placeholder="已保存时可留空不修改" /></label>
+        <label>咪咕 userId<input id="setMiguUserId" type="text" autocomplete="off" placeholder="可直接粘贴 userId|token" /></label>
+        <label>咪咕 token<input id="setMiguToken" type="password" autocomplete="off" placeholder="可留空不修改，或粘贴 userId|token" /></label>
         <label>清晰度
           <select id="setMiguRateType">
             <option value="auto">自动（4K → 标清）</option>
@@ -190,6 +190,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.23"></script>
+  <script src="js/app.js?v=1.2.24"></script>
 </body>
 </html>

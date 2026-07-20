@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.23';
+  var APP_VERSION = '1.2.24';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -188,6 +188,33 @@
 
   function miguUserId() { return (SET.miguUserId || '').trim(); }
   function miguToken() { return (SET.miguToken || '').trim(); }
+  function splitMiguCredential(value) {
+    var parts = String(value || '').trim().split('|');
+    if (parts.length < 2) return null;
+    var nextUserId = parts.shift().trim();
+    var nextToken = parts.join('|').trim();
+    if (!nextUserId || !nextToken) return null;
+    return { userId: nextUserId, token: nextToken };
+  }
+  function applyCombinedMiguCredential(value) {
+    var parsed = splitMiguCredential(value);
+    if (!parsed) return false;
+    $('#setMiguUserId').value = parsed.userId;
+    $('#setMiguToken').value = parsed.token;
+    return true;
+  }
+  function bindCombinedMiguCredentialInput(input) {
+    input.addEventListener('paste', function (e) {
+      var text = e.clipboardData && e.clipboardData.getData('text');
+      if (applyCombinedMiguCredential(text)) {
+        e.preventDefault();
+        toast('已自动分割 userId 和 token');
+      }
+    });
+    input.addEventListener('input', function () {
+      applyCombinedMiguCredential(input.value);
+    });
+  }
   function miguRateType() { return String(SET.miguRateType || 'auto'); }
   function miguHiddenGroups() { return (SET.miguHiddenGroups || '').trim(); }
   function hiddenGroupList() {
@@ -670,6 +697,8 @@
   }
   function saveSettings() {
     SET.port = $('#setPort').value.trim();
+    applyCombinedMiguCredential($('#setMiguUserId').value);
+    applyCombinedMiguCredential($('#setMiguToken').value);
     SET.miguUserId = $('#setMiguUserId').value.trim();
     SET.miguToken = $('#setMiguToken').value.trim();
     SET.miguRateType = $('#setMiguRateType').value || 'auto';
@@ -718,6 +747,8 @@
     $('#btnTheme').onclick = toggleTheme;
     $('#btnSettings').onclick = openSettings;
     $('#btnSaveSettings').onclick = saveSettings;
+    bindCombinedMiguCredentialInput($('#setMiguUserId'));
+    bindCombinedMiguCredentialInput($('#setMiguToken'));
     $('#btnRestartNow').onclick = restartNow;
     $('#setRestartScheduleType').onchange = updateRestartScheduleFields;
     $('#btnResetSettings').onclick = function () {
