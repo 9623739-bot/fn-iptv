@@ -176,23 +176,51 @@ function shortUserAgent(value) {
 function channelNameByPid(pid) {
   if (!pid) return ""
   const files = ["interfaceTXT.txt", "interface.txt"]
+  const pidPattern = new RegExp(`/(?:migu/)?${pid}(?:[/?#]|$)`)
   for (const file of files) {
     try {
       const text = fs.readFileSync(`${process.cwd()}/${file}`, "utf8")
       const lines = text.split(/\r?\n/)
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes(pid)) {
-          if (lines[i].startsWith("#EXTINF")) return (lines[i].match(/,(.*)$/) || [, ""])[1].trim()
-          return (lines[i].split(",")[0] || "").trim()
+        const line = lines[i]
+        const nextLine = i + 1 < lines.length ? lines[i + 1] : ""
+        if (pidPattern.test(line)) {
+          if (line.startsWith("#EXTINF")) return (line.match(/,(.*)$/) || [, ""])[1].trim()
+          if (i > 0 && lines[i - 1].startsWith("#EXTINF")) return (lines[i - 1].match(/,(.*)$/) || [, ""])[1].trim()
+          return (line.split(",")[0] || "").trim()
         }
-        if (i + 1 < lines.length && lines[i + 1].includes(pid)) {
-          if (lines[i].startsWith("#EXTINF")) return (lines[i].match(/,(.*)$/) || [, ""])[1].trim()
-          return (lines[i].split(",")[0] || "").trim()
+        if (line.startsWith("#EXTINF") && pidPattern.test(nextLine)) {
+          return (line.match(/,(.*)$/) || [, ""])[1].trim()
+        }
+        if (!line.startsWith("#EXTINF") && line.includes(",") && pidPattern.test(line.split(",").slice(1).join(","))) {
+          return (line.split(",")[0] || "").trim()
         }
       }
     } catch (error) {}
   }
   return ""
+}
+
+function safeLogUrl(url) {
+  if (String(url || "").startsWith("/proxy?")) {
+    return "/proxy?url=<hidden>"
+  }
+  return url
+}
+
+function isLikelyPlaylistUrl(url) {
+  return /\.m3u8(?:[?#]|$)/i.test(String(url || ""))
+}
+
+function touchDevice(req) {
+  const ip = clientIp(req)
+  const ua = shortUserAgent(req.headers["user-agent"])
+  const id = `${ip}|${ua}`
+  const old = onlineDevices.get(id)
+  if (old) {
+    old.lastActiveAt = Date.now()
+    old.online = true
+  }
 }
 
 function recordDevice(req, pid = "") {
@@ -429,7 +457,7 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {}
 
   // printGreen("")
-  printMagenta("请求地址：" + url)
+  printMagenta("请求地址：" + safeLogUrl(url))
 
   if (method === "HEAD") {
     res.writeHead(200, {
@@ -545,7 +573,12 @@ const server = http.createServer(async (req, res) => {
         throw new Error("missing proxy url")
       }
       const pid = new URL(targetUrl).searchParams.get("ProgramID") || ""
-      await sendProxiedUrl(res, targetUrl, req, pid)
+      if (isLikelyPlaylistUrl(targetUrl)) {
+        await sendProxiedUrl(res, targetUrl, req, pid)
+      } else {
+        touchDevice(req)
+        await sendProxiedUrl(res, targetUrl)
+      }
     } catch (error) {
       printRed(error.message)
       res.writeHead(502, { 'Content-Type': 'application/json;charset=UTF-8' });
