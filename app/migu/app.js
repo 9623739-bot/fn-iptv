@@ -62,9 +62,11 @@ function saveRuntimeConfig(config) {
 
 function currentCreds() {
   const config = loadRuntimeConfig()
+  const hasUserId = Object.prototype.hasOwnProperty.call(config, "userId")
+  const hasToken = Object.prototype.hasOwnProperty.call(config, "token")
   return {
-    userId: String(config.userId || userId || "").trim(),
-    token: String(config.token || token || "").trim(),
+    userId: String(hasUserId ? config.userId : (userId || "")).trim(),
+    token: String(hasToken ? config.token : (token || "")).trim(),
     rateType: normalizeRateType(config.rateType),
     hiddenGroups: parseHiddenGroups(config.hiddenGroups),
     restartIntervalHours: normalizeRestartIntervalHours(config.restartIntervalHours),
@@ -266,6 +268,21 @@ async function fetchFollow(url, maxRedirects = 6) {
           "Referer": "https://www.miguvideo.com/"
         }
       })
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location")
+        if (!location) {
+          throw new Error(`redirect without location: ${response.status}`)
+        }
+        current = new URL(location, current).href
+        continue
+      }
+      const body = Buffer.from(await response.arrayBuffer())
+      return {
+        body,
+        contentType: response.headers.get("content-type") || "",
+        finalUrl: current,
+        status: response.status
+      }
     } catch (error) {
       if (error.name === "AbortError") {
         throw new Error("upstream request timeout")
@@ -273,21 +290,6 @@ async function fetchFollow(url, maxRedirects = 6) {
       throw error
     } finally {
       clearTimeout(timer)
-    }
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location")
-      if (!location) {
-        throw new Error(`redirect without location: ${response.status}`)
-      }
-      current = new URL(location, current).href
-      continue
-    }
-    const body = Buffer.from(await response.arrayBuffer())
-    return {
-      body,
-      contentType: response.headers.get("content-type") || "",
-      finalUrl: current,
-      status: response.status
     }
   }
   throw new Error("too many redirects")
@@ -390,37 +392,38 @@ const server = http.createServer(async (req, res) => {
       } else if (method === "POST") {
         const oldConfig = loadRuntimeConfig()
         const body = JSON.parse(await readBody(req) || "{}")
-        const nextUserId = String(body.userId || oldConfig.userId || userId || "").trim()
-        const nextToken = String(body.token || oldConfig.token || token || "").trim()
+        const clearCredentials = body.clearCredentials === true
+        const nextUserId = clearCredentials
+          ? ""
+          : String(body.userId || oldConfig.userId || userId || "").trim()
+        const nextToken = clearCredentials
+          ? ""
+          : String(body.token || oldConfig.token || token || "").trim()
         const nextRateType = normalizeRateType(body.rateType)
         const nextHiddenGroups = Object.prototype.hasOwnProperty.call(body, "hiddenGroups")
           ? parseHiddenGroups(body.hiddenGroups)
           : parseHiddenGroups(oldConfig.hiddenGroups)
         const nextRestartIntervalHours = normalizeRestartIntervalHours(body.restartIntervalHours)
         const nextRestartAt = normalizeRestartAt(body.restartAt)
-        if (!nextUserId || !nextToken) {
-          res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
-          res.end(JSON.stringify({ error: "missing userId or token" }))
-        } else {
-          saveRuntimeConfig({
-            userId: nextUserId,
-            token: nextToken,
-            rateType: nextRateType,
-            hiddenGroups: nextHiddenGroups,
-            restartIntervalHours: nextRestartIntervalHours,
-            restartAt: nextRestartAt
-          })
-          clearChannelCache()
-          scheduleRestart()
-          res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
-          res.end(JSON.stringify({
-            ok: true,
-            rateType: nextRateType,
-            hiddenGroups: nextHiddenGroups.join(","),
-            restartIntervalHours: nextRestartIntervalHours,
-            restartAt: nextRestartAt
-          }))
-        }
+        saveRuntimeConfig({
+          userId: nextUserId,
+          token: nextToken,
+          rateType: nextRateType,
+          hiddenGroups: nextHiddenGroups,
+          restartIntervalHours: nextRestartIntervalHours,
+          restartAt: nextRestartAt
+        })
+        clearChannelCache()
+        scheduleRestart()
+        res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify({
+          ok: true,
+          configured: !!(nextUserId && nextToken),
+          rateType: nextRateType,
+          hiddenGroups: nextHiddenGroups.join(","),
+          restartIntervalHours: nextRestartIntervalHours,
+          restartAt: nextRestartAt
+        }))
       } else {
         res.writeHead(405, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({ error: "method not allowed" }))

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.21';
+  var APP_VERSION = '1.2.22';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -215,7 +215,7 @@
       return input.getAttribute('data-hidden-group');
     }).join(',');
   }
-  function hasMiguCreds() { return STATE.serverConfigured || !!(miguUserId() && miguToken()); }
+  function hasMiguCreds() { return true; }
   function miguM3uUrl() { return '/migu/m3u'; }
   function miguAdminM3uUrl() { return '/migu/m3u?all=1'; }
   function miguTxtUrl() { return '/migu/txt'; }
@@ -255,7 +255,8 @@
     $('#tokenHelpModal').classList.remove('open');
     $('#tokenHelpModal').setAttribute('aria-hidden', 'true');
   }
-  function saveMiguServerConfig() {
+  function saveMiguServerConfig(options) {
+    options = options || {};
     return fetch('/migu/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -265,13 +266,14 @@
         rateType: miguRateType(),
         hiddenGroups: miguHiddenGroups(),
         restartIntervalHours: SET.restartIntervalHours || '',
-        restartAt: SET.restartAt || ''
+        restartAt: SET.restartAt || '',
+        clearCredentials: options.clearCredentials === true
       })
     }).then(function (r) {
       if (!r.ok) throw new Error('http ' + r.status);
       return r.json();
     }).then(function (cfg) {
-      STATE.serverConfigured = !!(cfg.ok || cfg.configured || STATE.serverConfigured || (miguUserId() && miguToken()));
+      STATE.serverConfigured = !!(cfg.configured || (!options.clearCredentials && STATE.serverConfigured && (!miguUserId() || !miguToken())) || (miguUserId() && miguToken()));
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
@@ -701,10 +703,15 @@
       SET = Object.assign({}, DEFAULTS);
       EPG = { doc: null, loaded: false, url: '' };
       save();
-      openSettings();
-      loadChannels();
-      checkStatus();
-      toast('已恢复默认');
+      saveMiguServerConfig({ clearCredentials: true }).then(function () {
+        openSettings();
+        loadChannels();
+        checkStatus();
+        toast('已恢复默认');
+      }).catch(function () {
+        openSettings();
+        toast('本地已恢复，服务端配置清空失败');
+      });
     };
     $('#btnClosePlayer').onclick = closePlayer;
     $('#btnCopyStream').onclick = function () { if (STATE.cur) copy(cleanStreamUrl(STATE.cur.url)); };

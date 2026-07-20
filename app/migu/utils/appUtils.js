@@ -19,11 +19,18 @@ function clearChannelCache() {
   printGreen("已清空播放缓存")
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+function normalizeFetchError(error) {
+  if (error && error.name === "AbortError") {
+    return new Error("upstream request timeout")
+  }
+  return error
+}
+
+async function fetchTextWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...options,
       signal: controller.signal,
       headers: {
@@ -32,6 +39,13 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
         ...(options.headers || {})
       }
     })
+    return {
+      ok: response.ok,
+      text: await response.text(),
+      url: response.url || url
+    }
+  } catch (error) {
+    throw normalizeFetchError(error)
   } finally {
     clearTimeout(timer)
   }
@@ -39,20 +53,34 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 
 async function validatePlaylistUrl(playUrl, depth = 0) {
   if (!playUrl || depth > 2) return false
-  const response = await fetchWithTimeout(playUrl, { cache: "no-store" })
+  const response = await fetchTextWithTimeout(playUrl, { cache: "no-store" })
   if (!response.ok) return false
-  const finalUrl = response.url || playUrl
-  const text = await response.text()
-  if (!text.trim().startsWith("#EXTM3U")) return false
-  const mediaLine = text.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#"))
+  if (!response.text.trim().startsWith("#EXTM3U")) return false
+  const mediaLine = response.text.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#"))
   if (!mediaLine) return false
-  const mediaUrl = new URL(mediaLine, finalUrl).href
+  const mediaUrl = new URL(mediaLine, response.url || playUrl).href
   if (/\.m3u8(\?|$)/i.test(mediaUrl)) return validatePlaylistUrl(mediaUrl, depth + 1)
-  const segmentResponse = await fetchWithTimeout(mediaUrl, { cache: "no-store", headers: { Range: "bytes=0-1" } })
-  if (segmentResponse.body) {
-    try { await segmentResponse.body.cancel() } catch (error) {}
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const segmentResponse = await fetch(mediaUrl, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Mobile Safari/537.36",
+        "Referer": "https://www.miguvideo.com/",
+        "Range": "bytes=0-1"
+      }
+    })
+    if (segmentResponse.body) {
+      try { await segmentResponse.body.cancel() } catch (error) {}
+    }
+    return segmentResponse.ok
+  } catch (error) {
+    throw normalizeFetchError(error)
+  } finally {
+    clearTimeout(timer)
   }
-  return segmentResponse.ok
 }
 
 function interfaceStr(url, headers, urlUserId, urlToken) {
@@ -174,7 +202,12 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
       }
       if (resObj.url != "") {
         if (selectedRateType === "auto") {
-          const canPlay = await validatePlaylistUrl(resObj.url)
+          let canPlay = false
+          try {
+            canPlay = await validatePlaylistUrl(resObj.url)
+          } catch (error) {
+            printYellow(`清晰度 ${rateType} 链接验证超时或出错，尝试降级`)
+          }
           if (!canPlay) {
             printYellow(`清晰度 ${rateType} 链接验证失败，尝试降级`)
             resObj = { url: "", content: { message: "播放链接验证失败" } }
