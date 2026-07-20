@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.25';
+  var APP_VERSION = '1.2.26';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -11,6 +11,7 @@
     miguUserId: '',
     miguToken: '',
     miguRateType: 'auto',
+    lowLatencyMode: false,
     miguHiddenGroups: '',
     epg: '/migu/playback.xml',
     restartIntervalHours: '',
@@ -290,6 +291,7 @@
         userId: miguUserId(),
         token: miguToken(),
         rateType: miguRateType(),
+        lowLatencyMode: SET.lowLatencyMode === true,
         hiddenGroups: miguHiddenGroups(),
         restartIntervalHours: SET.restartIntervalHours || '',
         restartScheduleType: SET.restartScheduleType || 'off',
@@ -304,6 +306,7 @@
     }).then(function (cfg) {
       STATE.serverConfigured = !!(cfg.configured || (!options.clearCredentials && STATE.serverConfigured && (!miguUserId() || !miguToken())) || (miguUserId() && miguToken()));
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
+      if (typeof cfg.lowLatencyMode !== 'undefined') SET.lowLatencyMode = cfg.lowLatencyMode === true;
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
       if (typeof cfg.restartScheduleType === 'string') SET.restartScheduleType = normalizeScheduleType(cfg.restartScheduleType);
@@ -321,6 +324,7 @@
     }).then(function (cfg) {
       STATE.serverConfigured = !!cfg.configured;
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
+      if (typeof cfg.lowLatencyMode !== 'undefined') SET.lowLatencyMode = cfg.lowLatencyMode === true;
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
       if (typeof cfg.restartScheduleType === 'string') SET.restartScheduleType = normalizeScheduleType(cfg.restartScheduleType);
@@ -551,7 +555,14 @@
     }
     if (url.indexOf('.m3u8') >= 0 || /\.m3u8(\?|$)/.test(url) || url.indexOf('/migu/') >= 0) {
       if (window.Hls && window.Hls.isSupported()) {
-        hls = new window.Hls();
+        hls = new window.Hls(SET.lowLatencyMode ? {
+          lowLatencyMode: true,
+          liveSyncDurationCount: 1,
+          liveMaxLatencyDurationCount: 3,
+          maxLiveSyncPlaybackRate: 1.5,
+          maxBufferLength: 6,
+          backBufferLength: 0
+        } : {});
         hls.loadSource(url);
         hls.attachMedia(v);
         hls.on(window.Hls.Events.MANIFEST_PARSED, function (e, d) {
@@ -665,6 +676,7 @@
     $('#setPort').value = SET.port || location.port || '8510';
     $('#setMiguCredential').value = combinedMiguCredential();
     $('#setMiguRateType').value = miguRateType();
+    $('#setLowLatencyMode').checked = SET.lowLatencyMode === true;
     $('#setRestartInterval').value = SET.restartIntervalHours || '';
     $('#setRestartScheduleType').value = normalizeScheduleType(SET.restartScheduleType);
     $('#setRestartWeekday').value = SET.restartScheduleWeekday || '1';
@@ -677,6 +689,7 @@
     $('#settingsModal').setAttribute('aria-hidden', 'false');
     loadMiguServerConfig().then(function () {
       $('#setMiguRateType').value = miguRateType();
+      $('#setLowLatencyMode').checked = SET.lowLatencyMode === true;
       $('#setRestartInterval').value = SET.restartIntervalHours || '';
       $('#setRestartScheduleType').value = normalizeScheduleType(SET.restartScheduleType);
       $('#setRestartWeekday').value = SET.restartScheduleWeekday || '1';
@@ -706,6 +719,7 @@
       SET.miguToken = parsed.token;
     }
     SET.miguRateType = $('#setMiguRateType').value || 'auto';
+    SET.lowLatencyMode = $('#setLowLatencyMode').checked === true;
     SET.miguHiddenGroups = readHiddenGroupChecks();
     SET.epg = $('#setEpg').value.trim();
     SET.restartIntervalHours = $('#setRestartInterval').value.trim();

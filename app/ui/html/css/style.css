@@ -152,6 +152,11 @@ body {
   border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft); color: var(--text);
 }
 .check-grid input { width: 16px; height: 16px; accent-color: var(--primary); }
+.check-line {
+  display: flex !important; flex-direction: row !important; align-items: center; gap: 8px;
+  padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft); color: var(--text) !important;
+}
+.check-line input { width: 16px; height: 16px; accent-color: var(--primary); }
 .field-note { color: var(--amber); font-size: 12px; line-height: 1.45; }
 .help-steps { display: grid; gap: 10px; }
 .help-steps > div {

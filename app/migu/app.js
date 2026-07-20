@@ -52,6 +52,10 @@ function normalizeRestartTime(value) {
   return `${match[1].padStart(2, "0")}:${match[2]}`
 }
 
+function normalizeBoolean(value) {
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
 function daysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate()
 }
@@ -121,6 +125,7 @@ function currentCreds() {
     token: String(hasToken ? config.token : (token || "")).trim(),
     rateType: normalizeRateType(config.rateType),
     hiddenGroups: parseHiddenGroups(config.hiddenGroups),
+    lowLatencyMode: normalizeBoolean(config.lowLatencyMode),
     restartIntervalHours: normalizeRestartIntervalHours(config.restartIntervalHours),
     restartScheduleType: normalizeRestartScheduleType(config.restartScheduleType),
     restartScheduleWeekday: normalizeRestartWeekday(config.restartScheduleWeekday),
@@ -443,6 +448,7 @@ const server = http.createServer(async (req, res) => {
           configured: !!(creds.userId && creds.token),
           rateType: creds.rateType,
           hiddenGroups: creds.hiddenGroups.join(","),
+          lowLatencyMode: creds.lowLatencyMode,
           restartIntervalHours: creds.restartIntervalHours,
           restartScheduleType: creds.restartScheduleType,
           restartScheduleWeekday: creds.restartScheduleWeekday,
@@ -463,6 +469,7 @@ const server = http.createServer(async (req, res) => {
         const nextHiddenGroups = Object.prototype.hasOwnProperty.call(body, "hiddenGroups")
           ? parseHiddenGroups(body.hiddenGroups)
           : parseHiddenGroups(oldConfig.hiddenGroups)
+        const nextLowLatencyMode = normalizeBoolean(body.lowLatencyMode)
         const nextRestartIntervalHours = normalizeRestartIntervalHours(body.restartIntervalHours)
         const nextRestartScheduleType = normalizeRestartScheduleType(body.restartScheduleType)
         const nextRestartScheduleWeekday = normalizeRestartWeekday(body.restartScheduleWeekday)
@@ -473,6 +480,7 @@ const server = http.createServer(async (req, res) => {
           token: nextToken,
           rateType: nextRateType,
           hiddenGroups: nextHiddenGroups,
+          lowLatencyMode: nextLowLatencyMode,
           restartIntervalHours: nextRestartIntervalHours,
           restartScheduleType: nextRestartScheduleType,
           restartScheduleWeekday: nextRestartScheduleWeekday,
@@ -487,6 +495,7 @@ const server = http.createServer(async (req, res) => {
           configured: !!(nextUserId && nextToken),
           rateType: nextRateType,
           hiddenGroups: nextHiddenGroups.join(","),
+          lowLatencyMode: nextLowLatencyMode,
           restartIntervalHours: nextRestartIntervalHours,
           restartScheduleType: nextRestartScheduleType,
           restartScheduleWeekday: nextRestartScheduleWeekday,
