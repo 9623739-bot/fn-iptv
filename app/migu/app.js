@@ -11,11 +11,11 @@ import { channel, clearChannelCache, interfaceStr } from "./utils/appUtils.js";
 var hours = 0
 let loading = false
 const runtimeConfigPath = process.env.FN_IPTV_MIGU_CONFIG || "/migu-data/config.json"
-const rateTypes = new Set(["2", "3", "4", "7", "9"])
+const rateTypes = new Set(["auto", "2", "3", "4", "7", "9"])
 
 function normalizeRateType(value) {
-  const next = String(value || "3").trim()
-  return rateTypes.has(next) ? next : "3"
+  const next = String(value || "auto").trim()
+  return rateTypes.has(next) ? next : "auto"
 }
 
 function parseHiddenGroups(value) {

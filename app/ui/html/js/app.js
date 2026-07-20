@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.16';
+  var APP_VERSION = '1.2.17';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -10,7 +10,7 @@
     port: '',
     miguUserId: '',
     miguToken: '',
-    miguRateType: '3',
+    miguRateType: 'auto',
     miguHiddenGroups: '',
     epg: '/migu/playback.xml'
   };
@@ -176,7 +176,7 @@
 
   function miguUserId() { return (SET.miguUserId || '').trim(); }
   function miguToken() { return (SET.miguToken || '').trim(); }
-  function miguRateType() { return String(SET.miguRateType || '3'); }
+  function miguRateType() { return String(SET.miguRateType || 'auto'); }
   function miguHiddenGroups() { return (SET.miguHiddenGroups || '').trim(); }
   function hiddenGroupList() {
     return miguHiddenGroups().split(/[,，;；\n\r]+/).map(function (item) { return item.trim(); }).filter(Boolean);
@@ -573,7 +573,7 @@
     SET.port = $('#setPort').value.trim();
     SET.miguUserId = $('#setMiguUserId').value.trim();
     SET.miguToken = $('#setMiguToken').value.trim();
-    SET.miguRateType = $('#setMiguRateType').value || '3';
+    SET.miguRateType = $('#setMiguRateType').value || 'auto';
     SET.miguHiddenGroups = readHiddenGroupChecks();
     SET.epg = $('#setEpg').value.trim();
     EPG = { doc: null, loaded: false, url: '' };

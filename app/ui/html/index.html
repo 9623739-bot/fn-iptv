@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.16 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.17 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -88,13 +88,14 @@
         <label>咪咕 token<input id="setMiguToken" type="password" autocomplete="off" placeholder="已保存时可留空不修改" /></label>
         <label>清晰度
           <select id="setMiguRateType">
+            <option value="auto">自动（4K → 标清）</option>
             <option value="2">标清</option>
             <option value="3">高清</option>
             <option value="4">蓝光</option>
             <option value="7">原画</option>
             <option value="9">4K</option>
           </select>
-          <small class="field-note">备注：高清以上需要开通咪咕会员，部分频道还会受账号权益限制。</small>
+          <small class="field-note">备注：自动会从 4K、原画、蓝光、高清、标清依次尝试；高清以上需要开通咪咕会员。</small>
         </label>
         <div class="setting-block">
           <span>电视端隐藏分组</span>
@@ -149,6 +150,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.16"></script>
+  <script src="js/app.js?v=1.2.17"></script>
 </body>
 </html>

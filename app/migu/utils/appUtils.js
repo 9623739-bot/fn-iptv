@@ -89,7 +89,7 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
   let urlSplit = url.split("/")[1]
   let pid = urlSplit
   let params = ""
-  const selectedRateType = String(runtimeRateType || defaultRateType || 3)
+  const selectedRateType = String(runtimeRateType || defaultRateType || "auto")
 
   // 处理回放参数
   if (urlSplit.match(/\?/)) {
@@ -121,12 +121,26 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
   }
 
   let resObj = {}
+  const requestedRateTypes = selectedRateType === "auto" ? ["9", "7", "4", "3", "2"] : [selectedRateType]
   try {
-    // 未登录请求720p
-    if (selectedRateType >= 3 && (urlUserId == "" || urlToken == "")) {
-      resObj = await getAndroidURL720p(pid)
-    } else {
-      resObj = await getAndroidURL(urlUserId, urlToken, pid, selectedRateType)
+    for (const rateType of requestedRateTypes) {
+      printYellow(`尝试清晰度 ${rateType}`)
+      try {
+        // 未登录请求720p
+        if (Number(rateType) >= 3 && (urlUserId == "" || urlToken == "")) {
+          resObj = await getAndroidURL720p(pid)
+        } else {
+          resObj = await getAndroidURL(urlUserId, urlToken, pid, rateType)
+        }
+      } catch (error) {
+        console.log(error)
+        resObj = { url: "", content: { message: "链接请求出错" } }
+      }
+      if (resObj.url != "") {
+        printGreen(`清晰度 ${rateType} 获取成功`)
+        break
+      }
+      printYellow(`清晰度 ${rateType} 获取失败，尝试降级`)
     }
   } catch (error) {
     console.log(error)
