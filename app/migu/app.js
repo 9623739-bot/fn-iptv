@@ -5,12 +5,10 @@ import { host, pass, port, programInfoUpdateInterval, token, userId } from "./co
 import { getDateTimeStr } from "./utils/time.js";
 import update from "./utils/updateData.js";
 import { printBlue, printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
-import { delay } from "./utils/fetchList.js";
 import { channel, clearChannelCache, interfaceStr } from "./utils/appUtils.js";
 
 // 运行时长
 var hours = 0
-let loading = false
 const runtimeConfigPath = process.env.FN_IPTV_MIGU_CONFIG || "/migu-data/config.json"
 const rateTypes = new Set(["auto", "2", "3", "4", "7", "9"])
 const onlineDevices = new Map()
@@ -256,13 +254,26 @@ function rewritePlaylist(body, baseUrl) {
 async function fetchFollow(url, maxRedirects = 6) {
   let current = url
   for (let i = 0; i <= maxRedirects; i++) {
-    const response = await fetch(current, {
-      redirect: "manual",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Mobile Safari/537.36",
-        "Referer": "https://www.miguvideo.com/"
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 12000)
+    let response
+    try {
+      response = await fetch(current, {
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Mobile Safari/537.36",
+          "Referer": "https://www.miguvideo.com/"
+        }
+      })
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error("upstream request timeout")
       }
-    })
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location")
       if (!location) {
@@ -301,13 +312,6 @@ async function sendProxiedUrl(res, targetUrl, req = null, pid = "") {
 }
 
 const server = http.createServer(async (req, res) => {
-
-  while (loading) {
-    await delay(50)
-  }
-
-  loading = true
-
   // 获取请求方法、URL 和请求头
   let { method, url, headers } = req;
   // 身份认证
@@ -317,7 +321,6 @@ const server = http.createServer(async (req, res) => {
       printRed(`身份认证失败`)
       res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
       res.end(`身份认证失败`); // 发送文件内容
-      loading = false
       return
     } else {
       printGreen("身份认证成功")
@@ -369,7 +372,6 @@ const server = http.createServer(async (req, res) => {
       "Content-Type": "application/json;charset=UTF-8",
     });
     res.end();
-    loading = false;
     return;
   }
 
@@ -428,21 +430,18 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
       res.end(JSON.stringify({ error: error.message }))
     }
-    loading = false
     return
   }
 
   if (url === "/devices") {
     res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
     res.end(JSON.stringify(devicesPayload()))
-    loading = false
     return
   }
 
   if (url === "/restart") {
     res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
     res.end(JSON.stringify({ ok: true }))
-    loading = false
     restartService("手动重启")
     return
   }
@@ -453,8 +452,6 @@ const server = http.createServer(async (req, res) => {
       data: '请使用GET请求',
     }));
     printRed(`使用非GET请求:${method}`)
-
-    loading = false
     return
   }
 
@@ -473,7 +470,6 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(502, { 'Content-Type': 'application/json;charset=UTF-8' });
       res.end(error.message)
     }
-    loading = false
     return
   }
 
@@ -494,7 +490,6 @@ const server = http.createServer(async (req, res) => {
       content = filterInterfaceGroups(content, url, hiddenGroups)
     }
     res.end(content); // 发送文件内容
-    loading = false
     return
   }
 
@@ -511,7 +506,6 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json;charset=UTF-8',
     });
     res.end(result.desc)
-    loading = false
     return
   }
 
@@ -522,8 +516,6 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(502, { 'Content-Type': 'application/json;charset=UTF-8' });
     res.end(error.message)
   }
-
-  loading = false
 })
 
 server.listen(port, async () => {
