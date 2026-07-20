@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.22 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.23 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -111,9 +111,29 @@
           <span>重启设置</span>
           <div class="restart-grid">
             <label>每隔 N 小时重启<input id="setRestartInterval" type="number" min="0" max="720" placeholder="0 为关闭" /></label>
-            <label>指定时间重启<input id="setRestartAt" type="datetime-local" /></label>
+            <label>计划重启
+              <select id="setRestartScheduleType">
+                <option value="off">关闭</option>
+                <option value="daily">每天</option>
+                <option value="weekly">每周</option>
+                <option value="monthly">每月</option>
+              </select>
+            </label>
+            <label>每周几
+              <select id="setRestartWeekday">
+                <option value="1">周一</option>
+                <option value="2">周二</option>
+                <option value="3">周三</option>
+                <option value="4">周四</option>
+                <option value="5">周五</option>
+                <option value="6">周六</option>
+                <option value="0">周日</option>
+              </select>
+            </label>
+            <label>每月几号<input id="setRestartMonthDay" type="number" min="1" max="31" placeholder="1" /></label>
+            <label>重启时间<input id="setRestartTime" type="time" value="04:00" /></label>
           </div>
-          <small class="field-note">只重启咪咕源服务，用于恢复节目单或播放接口；设置为 0 并清空时间可关闭计划重启。</small>
+          <small class="field-note">只重启咪咕源服务；“每隔 N 小时”和“计划重启”会同时生效，谁先到时间就先执行。</small>
           <button id="btnRestartNow" class="btn ghost">立即重启咪咕源服务</button>
         </div>
         <div class="modal-foot">
@@ -170,6 +190,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.22"></script>
+  <script src="js/app.js?v=1.2.23"></script>
 </body>
 </html>

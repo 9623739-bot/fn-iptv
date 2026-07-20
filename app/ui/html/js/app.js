@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.22';
+  var APP_VERSION = '1.2.23';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -14,7 +14,10 @@
     miguHiddenGroups: '',
     epg: '/migu/playback.xml',
     restartIntervalHours: '',
-    restartAt: ''
+    restartScheduleType: 'off',
+    restartScheduleWeekday: '1',
+    restartScheduleMonthDay: '1',
+    restartScheduleTime: '04:00'
   };
   var SET = load();
   var STATE = { channels: [], cats: [], cur: null, serverConfigured: false };
@@ -132,18 +135,6 @@
       throw new Error('invalid response');
     });
   }
-  function toLocalDatetimeValue(value) {
-    if (!value) return '';
-    var d = new Date(value);
-    if (isNaN(d.getTime())) return '';
-    var pad = function (n) { return ('0' + n).slice(-2); };
-    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-  }
-  function fromLocalDatetimeValue(value) {
-    if (!value) return '';
-    var d = new Date(value);
-    return isNaN(d.getTime()) ? '' : d.toISOString();
-  }
   function timeAgo(seconds) {
     seconds = parseInt(seconds, 10) || 0;
     if (seconds < 60) return seconds + ' 秒前';
@@ -215,6 +206,15 @@
       return input.getAttribute('data-hidden-group');
     }).join(',');
   }
+  function normalizeScheduleType(value) {
+    return ['off', 'daily', 'weekly', 'monthly'].indexOf(value) >= 0 ? value : 'off';
+  }
+  function updateRestartScheduleFields() {
+    var type = normalizeScheduleType($('#setRestartScheduleType').value);
+    $('#setRestartWeekday').disabled = type !== 'weekly';
+    $('#setRestartMonthDay').disabled = type !== 'monthly';
+    $('#setRestartTime').disabled = type === 'off';
+  }
   function hasMiguCreds() { return true; }
   function miguM3uUrl() { return '/migu/m3u'; }
   function miguAdminM3uUrl() { return '/migu/m3u?all=1'; }
@@ -266,7 +266,10 @@
         rateType: miguRateType(),
         hiddenGroups: miguHiddenGroups(),
         restartIntervalHours: SET.restartIntervalHours || '',
-        restartAt: SET.restartAt || '',
+        restartScheduleType: SET.restartScheduleType || 'off',
+        restartScheduleWeekday: SET.restartScheduleWeekday || '1',
+        restartScheduleMonthDay: SET.restartScheduleMonthDay || '1',
+        restartScheduleTime: SET.restartScheduleTime || '04:00',
         clearCredentials: options.clearCredentials === true
       })
     }).then(function (r) {
@@ -277,7 +280,10 @@
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
-      if (typeof cfg.restartAt === 'string') SET.restartAt = cfg.restartAt;
+      if (typeof cfg.restartScheduleType === 'string') SET.restartScheduleType = normalizeScheduleType(cfg.restartScheduleType);
+      if (typeof cfg.restartScheduleWeekday !== 'undefined') SET.restartScheduleWeekday = String(cfg.restartScheduleWeekday || '1');
+      if (typeof cfg.restartScheduleMonthDay !== 'undefined') SET.restartScheduleMonthDay = String(cfg.restartScheduleMonthDay || '1');
+      if (typeof cfg.restartScheduleTime === 'string') SET.restartScheduleTime = cfg.restartScheduleTime || '04:00';
       save();
       return cfg;
     });
@@ -291,7 +297,10 @@
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
-      if (typeof cfg.restartAt === 'string') SET.restartAt = cfg.restartAt;
+      if (typeof cfg.restartScheduleType === 'string') SET.restartScheduleType = normalizeScheduleType(cfg.restartScheduleType);
+      if (typeof cfg.restartScheduleWeekday !== 'undefined') SET.restartScheduleWeekday = String(cfg.restartScheduleWeekday || '1');
+      if (typeof cfg.restartScheduleMonthDay !== 'undefined') SET.restartScheduleMonthDay = String(cfg.restartScheduleMonthDay || '1');
+      if (typeof cfg.restartScheduleTime === 'string') SET.restartScheduleTime = cfg.restartScheduleTime || '04:00';
       save();
       return cfg;
     }).catch(function () {
@@ -632,7 +641,11 @@
     $('#setMiguToken').value = SET.miguToken || '';
     $('#setMiguRateType').value = miguRateType();
     $('#setRestartInterval').value = SET.restartIntervalHours || '';
-    $('#setRestartAt').value = toLocalDatetimeValue(SET.restartAt);
+    $('#setRestartScheduleType').value = normalizeScheduleType(SET.restartScheduleType);
+    $('#setRestartWeekday').value = SET.restartScheduleWeekday || '1';
+    $('#setRestartMonthDay').value = SET.restartScheduleMonthDay || '1';
+    $('#setRestartTime').value = SET.restartScheduleTime || '04:00';
+    updateRestartScheduleFields();
     setHiddenGroupChecks();
     $('#setEpg').value = SET.epg || '';
     $('#settingsModal').classList.add('open');
@@ -640,7 +653,11 @@
     loadMiguServerConfig().then(function () {
       $('#setMiguRateType').value = miguRateType();
       $('#setRestartInterval').value = SET.restartIntervalHours || '';
-      $('#setRestartAt').value = toLocalDatetimeValue(SET.restartAt);
+      $('#setRestartScheduleType').value = normalizeScheduleType(SET.restartScheduleType);
+      $('#setRestartWeekday').value = SET.restartScheduleWeekday || '1';
+      $('#setRestartMonthDay').value = SET.restartScheduleMonthDay || '1';
+      $('#setRestartTime').value = SET.restartScheduleTime || '04:00';
+      updateRestartScheduleFields();
       setHiddenGroupChecks();
       if (STATE.serverConfigured && !$('#setMiguUserId').value && !$('#setMiguToken').value) {
         $('#setMiguToken').placeholder = '已在服务端保存，留空不修改';
@@ -659,7 +676,10 @@
     SET.miguHiddenGroups = readHiddenGroupChecks();
     SET.epg = $('#setEpg').value.trim();
     SET.restartIntervalHours = $('#setRestartInterval').value.trim();
-    SET.restartAt = fromLocalDatetimeValue($('#setRestartAt').value);
+    SET.restartScheduleType = normalizeScheduleType($('#setRestartScheduleType').value);
+    SET.restartScheduleWeekday = $('#setRestartWeekday').value || '1';
+    SET.restartScheduleMonthDay = $('#setRestartMonthDay').value || '1';
+    SET.restartScheduleTime = $('#setRestartTime').value || '04:00';
     EPG = { doc: null, loaded: false, url: '' };
     save();
     saveMiguServerConfig().then(function () {
@@ -699,6 +719,7 @@
     $('#btnSettings').onclick = openSettings;
     $('#btnSaveSettings').onclick = saveSettings;
     $('#btnRestartNow').onclick = restartNow;
+    $('#setRestartScheduleType').onchange = updateRestartScheduleFields;
     $('#btnResetSettings').onclick = function () {
       SET = Object.assign({}, DEFAULTS);
       EPG = { doc: null, loaded: false, url: '' };

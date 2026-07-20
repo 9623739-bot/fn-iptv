@@ -11,8 +11,10 @@ import { channel, clearChannelCache, interfaceStr } from "./utils/appUtils.js";
 var hours = 0
 const runtimeConfigPath = process.env.FN_IPTV_MIGU_CONFIG || "/migu-data/config.json"
 const rateTypes = new Set(["auto", "2", "3", "4", "7", "9"])
+const restartScheduleTypes = new Set(["off", "daily", "weekly", "monthly"])
 const onlineDevices = new Map()
 const onlineWindowMs = 60 * 1000
+const maxRestartTimerMs = 24 * 60 * 60 * 1000
 let restartTimer = null
 
 function normalizeRateType(value) {
@@ -26,12 +28,62 @@ function normalizeRestartIntervalHours(value) {
   return Math.min(n, 720)
 }
 
-function normalizeRestartAt(value) {
+function normalizeRestartScheduleType(value) {
+  const next = String(value || "off").trim()
+  return restartScheduleTypes.has(next) ? next : "off"
+}
+
+function normalizeRestartWeekday(value) {
+  const n = parseInt(value, 10)
+  if (!Number.isFinite(n) || n < 0 || n > 6) return 1
+  return n
+}
+
+function normalizeRestartMonthDay(value) {
+  const n = parseInt(value, 10)
+  if (!Number.isFinite(n) || n < 1) return 1
+  return Math.min(n, 31)
+}
+
+function normalizeRestartTime(value) {
   const text = String(value || "").trim()
-  if (!text) return ""
-  const time = Date.parse(text)
-  if (!Number.isFinite(time) || time <= Date.now()) return ""
-  return new Date(time).toISOString()
+  const match = text.match(/^([01]?\d|2[0-3]):([0-5]\d)$/)
+  if (!match) return "04:00"
+  return `${match[1].padStart(2, "0")}:${match[2]}`
+}
+
+function daysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate()
+}
+
+function scheduledDate(year, month, day, hour, minute) {
+  return new Date(year, month, Math.min(day, daysInMonth(year, month)), hour, minute, 0, 0)
+}
+
+function nextScheduledRestartAt(config, now = new Date()) {
+  const type = config.restartScheduleType
+  if (type === "off") return null
+  const [hour, minute] = config.restartScheduleTime.split(":").map((item) => parseInt(item, 10))
+  if (type === "daily") {
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0)
+    if (next <= now) next.setDate(next.getDate() + 1)
+    return next
+  }
+  if (type === "weekly") {
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0)
+    let days = (config.restartScheduleWeekday - now.getDay() + 7) % 7
+    if (days === 0 && next <= now) days = 7
+    next.setDate(next.getDate() + days)
+    return next
+  }
+  if (type === "monthly") {
+    let next = scheduledDate(now.getFullYear(), now.getMonth(), config.restartScheduleMonthDay, hour, minute)
+    if (next <= now) {
+      next = scheduledDate(now.getFullYear(), now.getMonth() + 1, config.restartScheduleMonthDay, hour, minute)
+    }
+    return next
+  }
+  return null
 }
 
 function parseHiddenGroups(value) {
@@ -70,7 +122,10 @@ function currentCreds() {
     rateType: normalizeRateType(config.rateType),
     hiddenGroups: parseHiddenGroups(config.hiddenGroups),
     restartIntervalHours: normalizeRestartIntervalHours(config.restartIntervalHours),
-    restartAt: normalizeRestartAt(config.restartAt)
+    restartScheduleType: normalizeRestartScheduleType(config.restartScheduleType),
+    restartScheduleWeekday: normalizeRestartWeekday(config.restartScheduleWeekday),
+    restartScheduleMonthDay: normalizeRestartMonthDay(config.restartScheduleMonthDay),
+    restartScheduleTime: normalizeRestartTime(config.restartScheduleTime)
   }
 }
 
@@ -85,20 +140,22 @@ function scheduleRestart() {
   const config = currentCreds()
   const candidates = []
   if (config.restartIntervalHours > 0) {
-    candidates.push({ type: "interval", at: Date.now() + config.restartIntervalHours * 60 * 60 * 1000 })
+    candidates.push({ reason: "定时重启", at: Date.now() + config.restartIntervalHours * 60 * 60 * 1000 })
   }
-  if (config.restartAt) {
-    candidates.push({ type: "once", at: Date.parse(config.restartAt) })
+  const scheduled = nextScheduledRestartAt(config)
+  if (scheduled) {
+    candidates.push({ reason: "计划重启", at: scheduled.getTime() })
   }
   const next = candidates.filter((item) => item.at > Date.now()).sort((a, b) => a.at - b.at)[0]
   if (!next) return
+  const delayMs = Math.max(100, next.at - Date.now())
   restartTimer = setTimeout(() => {
-    if (next.type === "once") {
-      const oldConfig = loadRuntimeConfig()
-      saveRuntimeConfig({ ...oldConfig, restartAt: "" })
+    if (delayMs > maxRestartTimerMs) {
+      scheduleRestart()
+      return
     }
-    restartService(next.type === "once" ? "指定时间重启" : "定时重启", 100)
-  }, Math.max(100, next.at - Date.now()))
+    restartService(next.reason, 100)
+  }, Math.min(delayMs, maxRestartTimerMs))
   printGreen(`下次计划重启: ${new Date(next.at).toISOString()}`)
 }
 
@@ -387,7 +444,10 @@ const server = http.createServer(async (req, res) => {
           rateType: creds.rateType,
           hiddenGroups: creds.hiddenGroups.join(","),
           restartIntervalHours: creds.restartIntervalHours,
-          restartAt: creds.restartAt
+          restartScheduleType: creds.restartScheduleType,
+          restartScheduleWeekday: creds.restartScheduleWeekday,
+          restartScheduleMonthDay: creds.restartScheduleMonthDay,
+          restartScheduleTime: creds.restartScheduleTime
         }))
       } else if (method === "POST") {
         const oldConfig = loadRuntimeConfig()
@@ -404,14 +464,20 @@ const server = http.createServer(async (req, res) => {
           ? parseHiddenGroups(body.hiddenGroups)
           : parseHiddenGroups(oldConfig.hiddenGroups)
         const nextRestartIntervalHours = normalizeRestartIntervalHours(body.restartIntervalHours)
-        const nextRestartAt = normalizeRestartAt(body.restartAt)
+        const nextRestartScheduleType = normalizeRestartScheduleType(body.restartScheduleType)
+        const nextRestartScheduleWeekday = normalizeRestartWeekday(body.restartScheduleWeekday)
+        const nextRestartScheduleMonthDay = normalizeRestartMonthDay(body.restartScheduleMonthDay)
+        const nextRestartScheduleTime = normalizeRestartTime(body.restartScheduleTime)
         saveRuntimeConfig({
           userId: nextUserId,
           token: nextToken,
           rateType: nextRateType,
           hiddenGroups: nextHiddenGroups,
           restartIntervalHours: nextRestartIntervalHours,
-          restartAt: nextRestartAt
+          restartScheduleType: nextRestartScheduleType,
+          restartScheduleWeekday: nextRestartScheduleWeekday,
+          restartScheduleMonthDay: nextRestartScheduleMonthDay,
+          restartScheduleTime: nextRestartScheduleTime
         })
         clearChannelCache()
         scheduleRestart()
@@ -422,7 +488,10 @@ const server = http.createServer(async (req, res) => {
           rateType: nextRateType,
           hiddenGroups: nextHiddenGroups.join(","),
           restartIntervalHours: nextRestartIntervalHours,
-          restartAt: nextRestartAt
+          restartScheduleType: nextRestartScheduleType,
+          restartScheduleWeekday: nextRestartScheduleWeekday,
+          restartScheduleMonthDay: nextRestartScheduleMonthDay,
+          restartScheduleTime: nextRestartScheduleTime
         }))
       } else {
         res.writeHead(405, { 'Content-Type': 'application/json;charset=UTF-8' });
