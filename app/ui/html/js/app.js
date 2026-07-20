@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.26';
+  var APP_VERSION = '1.2.27';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -214,6 +214,12 @@
         setTimeout(function () { toast('已识别 userId 和 token'); }, 0);
       }
     });
+  }
+  function toggleCredentialVisible() {
+    var input = $('#setMiguCredential');
+    var visible = input.type === 'text';
+    input.type = visible ? 'password' : 'text';
+    $('#btnToggleCredential').textContent = visible ? '显示' : '隐藏';
   }
   function miguRateType() { return String(SET.miguRateType || 'auto'); }
   function miguHiddenGroups() { return (SET.miguHiddenGroups || '').trim(); }
@@ -766,6 +772,7 @@
     $('#btnSettings').onclick = openSettings;
     $('#btnSaveSettings').onclick = saveSettings;
     bindCombinedMiguCredentialInput();
+    $('#btnToggleCredential').onclick = toggleCredentialVisible;
     $('#btnRestartNow').onclick = restartNow;
     $('#setRestartScheduleType').onchange = updateRestartScheduleFields;
     $('#btnResetSettings').onclick = function () {
