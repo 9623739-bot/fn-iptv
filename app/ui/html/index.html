@@ -16,12 +16,13 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.18 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.19 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
       <button id="btnTokenHelp" class="btn ghost" title="获取咪咕 userId / token 教程">获取 Token 教程</button>
       <button id="btnTvboxHelp" class="btn ghost" title="TVBox 填写教程">TVBox 教程</button>
+      <button id="btnDevices" class="btn ghost" title="查看正在播放的设备">在线设备</button>
       <button id="btnRefresh" class="btn ghost" title="刷新状态与频道">刷新</button>
       <button id="btnTheme" class="btn ghost" title="切换主题">明/暗</button>
       <button id="btnSettings" class="btn ghost" title="设置">设置</button>
@@ -106,6 +107,15 @@
           <small class="field-note">只影响 TVBox、m3u、txt 订阅源；后台频道列表仍显示全部频道。</small>
         </div>
         <label>EPG 节目单地址<input id="setEpg" type="text" placeholder="/migu/playback.xml" /></label>
+        <div class="setting-block">
+          <span>重启设置</span>
+          <div class="restart-grid">
+            <label>每隔 N 小时重启<input id="setRestartInterval" type="number" min="0" max="720" placeholder="0 为关闭" /></label>
+            <label>指定时间重启<input id="setRestartAt" type="datetime-local" /></label>
+          </div>
+          <small class="field-note">只重启咪咕源服务，用于恢复节目单或播放接口；设置为 0 并清空时间可关闭计划重启。</small>
+          <button id="btnRestartNow" class="btn ghost">立即重启咪咕源服务</button>
+        </div>
         <div class="modal-foot">
           <button id="btnResetSettings" class="btn ghost">恢复默认</button>
           <button id="btnSaveSettings" class="btn primary">保存</button>
@@ -148,8 +158,18 @@
     </div>
   </div>
 
+  <div class="modal" id="devicesModal" aria-hidden="true">
+    <div class="modal-card wide">
+      <div class="modal-head"><h2>在线设备</h2><button class="btn ghost sm" data-close-devices>关闭</button></div>
+      <div class="modal-body">
+        <div class="devices-summary" id="devicesSummary">检测中...</div>
+        <div class="devices-list" id="devicesList"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.18"></script>
+  <script src="js/app.js?v=1.2.19"></script>
 </body>
 </html>

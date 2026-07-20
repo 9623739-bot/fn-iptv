@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.18';
+  var APP_VERSION = '1.2.19';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -12,7 +12,9 @@
     miguToken: '',
     miguRateType: 'auto',
     miguHiddenGroups: '',
-    epg: '/migu/playback.xml'
+    epg: '/migu/playback.xml',
+    restartIntervalHours: '',
+    restartAt: ''
   };
   var SET = load();
   var STATE = { channels: [], cats: [], cur: null, serverConfigured: false };
@@ -130,6 +132,25 @@
       throw new Error('invalid response');
     });
   }
+  function toLocalDatetimeValue(value) {
+    if (!value) return '';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    var pad = function (n) { return ('0' + n).slice(-2); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function fromLocalDatetimeValue(value) {
+    if (!value) return '';
+    var d = new Date(value);
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+  }
+  function timeAgo(seconds) {
+    seconds = parseInt(seconds, 10) || 0;
+    if (seconds < 60) return seconds + ' 秒前';
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + ' 分钟前';
+    return Math.floor(minutes / 60) + ' 小时前';
+  }
 
   function compareVersions(a, b) {
     var pa = String(a || '').split('.').map(function (n) { return parseInt(n, 10) || 0; });
@@ -242,7 +263,9 @@
         userId: miguUserId(),
         token: miguToken(),
         rateType: miguRateType(),
-        hiddenGroups: miguHiddenGroups()
+        hiddenGroups: miguHiddenGroups(),
+        restartIntervalHours: SET.restartIntervalHours || '',
+        restartAt: SET.restartAt || ''
       })
     }).then(function (r) {
       if (!r.ok) throw new Error('http ' + r.status);
@@ -251,6 +274,8 @@
       STATE.serverConfigured = !!(cfg.ok || cfg.configured || STATE.serverConfigured || (miguUserId() && miguToken()));
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
+      if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
+      if (typeof cfg.restartAt === 'string') SET.restartAt = cfg.restartAt;
       save();
       return cfg;
     });
@@ -263,6 +288,8 @@
       STATE.serverConfigured = !!cfg.configured;
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
+      if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
+      if (typeof cfg.restartAt === 'string') SET.restartAt = cfg.restartAt;
       save();
       return cfg;
     }).catch(function () {
@@ -329,6 +356,55 @@
     if (dot) dot.className = 'dot ' + cls;
     if (st) st.textContent = status;
     if (cnt) cnt.textContent = count;
+  }
+  function loadDevices() {
+    return fetch('/migu/devices', { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      var list = data.devices || [];
+      $('#devicesSummary').textContent = '当前在线 ' + (data.onlineCount || 0) + ' 台设备';
+      var box = $('#devicesList');
+      if (!list.length) {
+        box.innerHTML = '<div class="empty compact">暂无播放设备</div>';
+        return;
+      }
+      box.innerHTML = list.map(function (d) {
+        var status = d.online ? '播放中' : '离线';
+        var cls = d.online ? 'on' : 'off';
+        return '<div class="device-row">' +
+          '<div><b>' + escapeHtml(d.ip || '未知 IP') + '</b><span>' + escapeHtml(d.userAgent || '未知播放器') + '</span></div>' +
+          '<div><b>' + escapeHtml(d.channelName || d.channelId || '未知频道') + '</b><span>最后活跃 ' + timeAgo(d.secondsAgo) + '</span></div>' +
+          '<em class="' + cls + '">' + status + '</em>' +
+        '</div>';
+      }).join('');
+    }).catch(function () {
+      $('#devicesSummary').textContent = '在线设备加载失败';
+      $('#devicesList').innerHTML = '';
+    });
+  }
+  function openDevices() {
+    $('#devicesModal').classList.add('open');
+    $('#devicesModal').setAttribute('aria-hidden', 'false');
+    loadDevices();
+    clearInterval(openDevices._timer);
+    openDevices._timer = setInterval(loadDevices, 10000);
+  }
+  function closeDevices() {
+    $('#devicesModal').classList.remove('open');
+    $('#devicesModal').setAttribute('aria-hidden', 'true');
+    clearInterval(openDevices._timer);
+  }
+  function restartNow() {
+    if (!confirm('确认立即重启咪咕源服务？重启期间播放会短暂中断。')) return;
+    fetch('/migu/restart', { method: 'POST' }).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      toast('已发送重启指令，稍后自动恢复');
+      closeSettings();
+      setTimeout(function () { checkStatus(); }, 8000);
+    }).catch(function () {
+      toast('重启指令发送失败');
+    });
   }
 
   function checkStatus() {
@@ -553,12 +629,16 @@
     $('#setMiguUserId').value = SET.miguUserId || '';
     $('#setMiguToken').value = SET.miguToken || '';
     $('#setMiguRateType').value = miguRateType();
+    $('#setRestartInterval').value = SET.restartIntervalHours || '';
+    $('#setRestartAt').value = toLocalDatetimeValue(SET.restartAt);
     setHiddenGroupChecks();
     $('#setEpg').value = SET.epg || '';
     $('#settingsModal').classList.add('open');
     $('#settingsModal').setAttribute('aria-hidden', 'false');
     loadMiguServerConfig().then(function () {
       $('#setMiguRateType').value = miguRateType();
+      $('#setRestartInterval').value = SET.restartIntervalHours || '';
+      $('#setRestartAt').value = toLocalDatetimeValue(SET.restartAt);
       setHiddenGroupChecks();
       if (STATE.serverConfigured && !$('#setMiguUserId').value && !$('#setMiguToken').value) {
         $('#setMiguToken').placeholder = '已在服务端保存，留空不修改';
@@ -576,6 +656,8 @@
     SET.miguRateType = $('#setMiguRateType').value || 'auto';
     SET.miguHiddenGroups = readHiddenGroupChecks();
     SET.epg = $('#setEpg').value.trim();
+    SET.restartIntervalHours = $('#setRestartInterval').value.trim();
+    SET.restartAt = fromLocalDatetimeValue($('#setRestartAt').value);
     EPG = { doc: null, loaded: false, url: '' };
     save();
     saveMiguServerConfig().then(function () {
@@ -608,11 +690,13 @@
     });
     $('#btnTokenHelp').onclick = openTokenHelp;
     $('#btnTvboxHelp').onclick = openTvboxHelp;
+    $('#btnDevices').onclick = openDevices;
     $('#btnDismissUpdate').onclick = dismissUpdate;
     $('#btnRefresh').onclick = function () { loadChannels(); checkStatus(); toast('已刷新'); };
     $('#btnTheme').onclick = toggleTheme;
     $('#btnSettings').onclick = openSettings;
     $('#btnSaveSettings').onclick = saveSettings;
+    $('#btnRestartNow').onclick = restartNow;
     $('#btnResetSettings').onclick = function () {
       SET = Object.assign({}, DEFAULTS);
       EPG = { doc: null, loaded: false, url: '' };
@@ -629,14 +713,15 @@
     $all('[data-close]').forEach(function (b) { b.onclick = closeSettings; });
     $all('[data-close-tvbox]').forEach(function (b) { b.onclick = closeTvboxHelp; });
     $all('[data-close-token]').forEach(function (b) { b.onclick = closeTokenHelp; });
+    $all('[data-close-devices]').forEach(function (b) { b.onclick = closeDevices; });
     $all('[data-copy-tvbox]').forEach(function (b) {
       b.onclick = function () {
         var urls = tvboxUrls();
         copy(urls[this.getAttribute('data-copy-tvbox')]);
       };
     });
-    $all('.modal').forEach(function (m) { m.onclick = function (e) { if (e.target === m) m.classList.remove('open'); }; });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closePlayer(); closeSettings(); closeTvboxHelp(); closeTokenHelp(); } });
+    $all('.modal').forEach(function (m) { m.onclick = function (e) { if (e.target === m) { m.classList.remove('open'); closeDevices(); } }; });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closePlayer(); closeSettings(); closeTvboxHelp(); closeTokenHelp(); closeDevices(); } });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

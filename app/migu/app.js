@@ -1,9 +1,10 @@
 import http from "node:http"
 import fs from "node:fs"
+import { createHash } from "node:crypto"
 import { host, pass, port, programInfoUpdateInterval, token, userId } from "./config.js";
 import { getDateTimeStr } from "./utils/time.js";
 import update from "./utils/updateData.js";
-import { printBlue, printGreen, printMagenta, printRed } from "./utils/colorOut.js";
+import { printBlue, printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
 import { delay } from "./utils/fetchList.js";
 import { channel, clearChannelCache, interfaceStr } from "./utils/appUtils.js";
 
@@ -12,10 +13,27 @@ var hours = 0
 let loading = false
 const runtimeConfigPath = process.env.FN_IPTV_MIGU_CONFIG || "/migu-data/config.json"
 const rateTypes = new Set(["auto", "2", "3", "4", "7", "9"])
+const onlineDevices = new Map()
+const onlineWindowMs = 60 * 1000
+let restartTimer = null
 
 function normalizeRateType(value) {
   const next = String(value || "auto").trim()
   return rateTypes.has(next) ? next : "auto"
+}
+
+function normalizeRestartIntervalHours(value) {
+  const n = parseInt(value, 10)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(n, 720)
+}
+
+function normalizeRestartAt(value) {
+  const text = String(value || "").trim()
+  if (!text) return ""
+  const time = Date.parse(text)
+  if (!Number.isFinite(time) || time <= Date.now()) return ""
+  return new Date(time).toISOString()
 }
 
 function parseHiddenGroups(value) {
@@ -50,7 +68,98 @@ function currentCreds() {
     userId: String(config.userId || userId || "").trim(),
     token: String(config.token || token || "").trim(),
     rateType: normalizeRateType(config.rateType),
-    hiddenGroups: parseHiddenGroups(config.hiddenGroups)
+    hiddenGroups: parseHiddenGroups(config.hiddenGroups),
+    restartIntervalHours: normalizeRestartIntervalHours(config.restartIntervalHours),
+    restartAt: normalizeRestartAt(config.restartAt)
+  }
+}
+
+function restartService(reason, delayMs = 700) {
+  printYellow(`准备重启服务: ${reason}`)
+  setTimeout(() => process.exit(0), delayMs)
+}
+
+function scheduleRestart() {
+  if (restartTimer) clearTimeout(restartTimer)
+  restartTimer = null
+  const config = currentCreds()
+  const candidates = []
+  if (config.restartIntervalHours > 0) {
+    candidates.push({ type: "interval", at: Date.now() + config.restartIntervalHours * 60 * 60 * 1000 })
+  }
+  if (config.restartAt) {
+    candidates.push({ type: "once", at: Date.parse(config.restartAt) })
+  }
+  const next = candidates.filter((item) => item.at > Date.now()).sort((a, b) => a.at - b.at)[0]
+  if (!next) return
+  restartTimer = setTimeout(() => {
+    if (next.type === "once") {
+      const oldConfig = loadRuntimeConfig()
+      saveRuntimeConfig({ ...oldConfig, restartAt: "" })
+    }
+    restartService(next.type === "once" ? "指定时间重启" : "定时重启", 100)
+  }, Math.max(100, next.at - Date.now()))
+  printGreen(`下次计划重启: ${new Date(next.at).toISOString()}`)
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()
+  return forwarded || req.socket.remoteAddress || ""
+}
+
+function shortUserAgent(value) {
+  return String(value || "未知播放器").split(/\s+/).slice(0, 3).join(" ")
+}
+
+function channelNameByPid(pid) {
+  if (!pid) return ""
+  const files = ["interfaceTXT.txt", "interface.txt"]
+  for (const file of files) {
+    try {
+      const text = fs.readFileSync(`${process.cwd()}/${file}`, "utf8")
+      const lines = text.split(/\r?\n/)
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(pid)) {
+          if (lines[i].startsWith("#EXTINF")) return (lines[i].match(/,(.*)$/) || [, ""])[1].trim()
+          return (lines[i].split(",")[0] || "").trim()
+        }
+        if (i + 1 < lines.length && lines[i + 1].includes(pid)) {
+          if (lines[i].startsWith("#EXTINF")) return (lines[i].match(/,(.*)$/) || [, ""])[1].trim()
+          return (lines[i].split(",")[0] || "").trim()
+        }
+      }
+    } catch (error) {}
+  }
+  return ""
+}
+
+function recordDevice(req, pid = "") {
+  const ip = clientIp(req)
+  const ua = shortUserAgent(req.headers["user-agent"])
+  const id = `${ip}|${ua}`
+  const now = Date.now()
+  const old = onlineDevices.get(id) || {}
+  onlineDevices.set(id, {
+    id: createHash("sha256").update(id).digest("hex").slice(0, 12),
+    ip,
+    userAgent: ua,
+    channelId: pid || old.channelId || "",
+    channelName: (pid && channelNameByPid(pid)) || old.channelName || "",
+    lastActiveAt: now,
+    online: true
+  })
+}
+
+function devicesPayload() {
+  const now = Date.now()
+  const devices = Array.from(onlineDevices.values()).map((item) => ({
+    ...item,
+    online: now - item.lastActiveAt <= onlineWindowMs,
+    secondsAgo: Math.max(0, Math.round((now - item.lastActiveAt) / 1000))
+  })).sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+  return {
+    onlineCount: devices.filter((item) => item.online).length,
+    devices
   }
 }
 
@@ -173,7 +282,8 @@ async function fetchFollow(url, maxRedirects = 6) {
   throw new Error("too many redirects")
 }
 
-async function sendProxiedUrl(res, targetUrl) {
+async function sendProxiedUrl(res, targetUrl, req = null, pid = "") {
+  if (req) recordDevice(req, pid)
   const proxied = await fetchFollow(targetUrl)
   if (isPlaylist(proxied.contentType, proxied.finalUrl, proxied.body)) {
     res.writeHead(200, {
@@ -271,7 +381,9 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({
           configured: !!(creds.userId && creds.token),
           rateType: creds.rateType,
-          hiddenGroups: creds.hiddenGroups.join(",")
+          hiddenGroups: creds.hiddenGroups.join(","),
+          restartIntervalHours: creds.restartIntervalHours,
+          restartAt: creds.restartAt
         }))
       } else if (method === "POST") {
         const oldConfig = loadRuntimeConfig()
@@ -282,14 +394,30 @@ const server = http.createServer(async (req, res) => {
         const nextHiddenGroups = Object.prototype.hasOwnProperty.call(body, "hiddenGroups")
           ? parseHiddenGroups(body.hiddenGroups)
           : parseHiddenGroups(oldConfig.hiddenGroups)
+        const nextRestartIntervalHours = normalizeRestartIntervalHours(body.restartIntervalHours)
+        const nextRestartAt = normalizeRestartAt(body.restartAt)
         if (!nextUserId || !nextToken) {
           res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
           res.end(JSON.stringify({ error: "missing userId or token" }))
         } else {
-          saveRuntimeConfig({ userId: nextUserId, token: nextToken, rateType: nextRateType, hiddenGroups: nextHiddenGroups })
+          saveRuntimeConfig({
+            userId: nextUserId,
+            token: nextToken,
+            rateType: nextRateType,
+            hiddenGroups: nextHiddenGroups,
+            restartIntervalHours: nextRestartIntervalHours,
+            restartAt: nextRestartAt
+          })
           clearChannelCache()
+          scheduleRestart()
           res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
-          res.end(JSON.stringify({ ok: true, rateType: nextRateType, hiddenGroups: nextHiddenGroups.join(",") }))
+          res.end(JSON.stringify({
+            ok: true,
+            rateType: nextRateType,
+            hiddenGroups: nextHiddenGroups.join(","),
+            restartIntervalHours: nextRestartIntervalHours,
+            restartAt: nextRestartAt
+          }))
         }
       } else {
         res.writeHead(405, { 'Content-Type': 'application/json;charset=UTF-8' });
@@ -301,6 +429,21 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: error.message }))
     }
     loading = false
+    return
+  }
+
+  if (url === "/devices") {
+    res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
+    res.end(JSON.stringify(devicesPayload()))
+    loading = false
+    return
+  }
+
+  if (url === "/restart") {
+    res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
+    res.end(JSON.stringify({ ok: true }))
+    loading = false
+    restartService("手动重启")
     return
   }
 
@@ -323,7 +466,8 @@ const server = http.createServer(async (req, res) => {
       if (!targetUrl) {
         throw new Error("missing proxy url")
       }
-      await sendProxiedUrl(res, targetUrl)
+      const pid = new URL(targetUrl).searchParams.get("ProgramID") || ""
+      await sendProxiedUrl(res, targetUrl, req, pid)
     } catch (error) {
       printRed(error.message)
       res.writeHead(502, { 'Content-Type': 'application/json;charset=UTF-8' });
@@ -355,6 +499,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 频道
+  const pid = (url.split("/")[1] || "").split("?")[0]
+  recordDevice(req, pid)
   const result = await channel(url, urlUserId, urlToken, urlRateType)
 
   // 结果异常
@@ -370,7 +516,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    await sendProxiedUrl(res, result.playURL)
+    await sendProxiedUrl(res, result.playURL, req, pid)
   } catch (error) {
     printRed(error.message)
     res.writeHead(502, { 'Content-Type': 'application/json;charset=UTF-8' });
@@ -382,6 +528,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, async () => {
   const updateInterval = parseInt(programInfoUpdateInterval)
+  scheduleRestart()
   // 更新
   setInterval(async () => {
     printBlue(`准备更新文件 ${getDateTimeStr(new Date())}`)
