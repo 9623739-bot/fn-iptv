@@ -19,6 +19,42 @@ function clearChannelCache() {
   printGreen("已清空播放缓存")
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Mobile Safari/537.36",
+        "Referer": "https://www.miguvideo.com/",
+        ...(options.headers || {})
+      }
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function validatePlaylistUrl(playUrl, depth = 0) {
+  if (!playUrl || depth > 2) return false
+  const response = await fetchWithTimeout(playUrl, { cache: "no-store" })
+  if (!response.ok) return false
+  const finalUrl = response.url || playUrl
+  const text = await response.text()
+  if (!text.trim().startsWith("#EXTM3U")) return false
+  const mediaLine = text.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#"))
+  if (!mediaLine) return false
+  const mediaUrl = new URL(mediaLine, finalUrl).href
+  if (/\.m3u8(\?|$)/i.test(mediaUrl)) return validatePlaylistUrl(mediaUrl, depth + 1)
+  const segmentResponse = await fetchWithTimeout(mediaUrl, { cache: "no-store", headers: { Range: "bytes=0-1" } })
+  if (segmentResponse.body) {
+    try { await segmentResponse.body.cancel() } catch (error) {}
+  }
+  return segmentResponse.ok
+}
+
 function interfaceStr(url, headers, urlUserId, urlToken) {
 
   let result = {
@@ -137,6 +173,14 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
         resObj = { url: "", content: { message: "链接请求出错" } }
       }
       if (resObj.url != "") {
+        if (selectedRateType === "auto") {
+          const canPlay = await validatePlaylistUrl(resObj.url)
+          if (!canPlay) {
+            printYellow(`清晰度 ${rateType} 链接验证失败，尝试降级`)
+            resObj = { url: "", content: { message: "播放链接验证失败" } }
+            continue
+          }
+        }
         printGreen(`清晰度 ${rateType} 获取成功`)
         break
       }
