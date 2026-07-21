@@ -20,6 +20,19 @@ const segmentCacheMaxBytes = 256 * 1024 * 1024
 const segmentCache = new Map()
 const segmentInflight = new Map()
 let segmentCacheBytes = 0
+const segmentStats = {
+  startedAt: Date.now(),
+  requests: 0,
+  memoryHits: 0,
+  inflightHits: 0,
+  cacheMisses: 0,
+  upstreamFetches: 0,
+  upstreamBytes: 0,
+  upstreamErrors: 0,
+  cacheWrites: 0,
+  evictions: 0,
+  bytesServedFromMemory: 0
+}
 let restartTimer = null
 
 function normalizeRateType(value) {
@@ -255,6 +268,7 @@ function pruneSegmentCache() {
     if (item.expiresAt <= now) {
       segmentCache.delete(key)
       segmentCacheBytes -= item.size
+      segmentStats.evictions += 1
     }
   }
   while (segmentCacheBytes > segmentCacheMaxBytes) {
@@ -263,6 +277,7 @@ function pruneSegmentCache() {
     const item = segmentCache.get(oldest)
     segmentCache.delete(oldest)
     segmentCacheBytes -= item ? item.size : 0
+    segmentStats.evictions += 1
   }
 }
 
@@ -276,21 +291,28 @@ function segmentCacheHeaders(proxied) {
 }
 
 async function fetchSegmentCached(targetUrl) {
+  segmentStats.requests += 1
   pruneSegmentCache()
   const now = Date.now()
   const cached = segmentCache.get(targetUrl)
   if (cached && cached.expiresAt > now) {
     segmentCache.delete(targetUrl)
     segmentCache.set(targetUrl, cached)
+    segmentStats.memoryHits += 1
+    segmentStats.bytesServedFromMemory += cached.size
     return { ...cached.proxied, cacheHit: true }
   }
   if (segmentInflight.has(targetUrl)) {
+    segmentStats.inflightHits += 1
     const proxied = await segmentInflight.get(targetUrl)
     return { ...proxied, cacheHit: true }
   }
+  segmentStats.cacheMisses += 1
+  segmentStats.upstreamFetches += 1
   const pending = fetchFollow(targetUrl).then((proxied) => {
     const size = proxied.body.length
     const status = proxied.status || 200
+    segmentStats.upstreamBytes += size
     if (status >= 200 && status < 300 && size > 0 && size <= segmentCacheMaxBytes) {
       const previous = segmentCache.get(targetUrl)
       if (previous) {
@@ -302,15 +324,44 @@ async function fetchSegmentCached(targetUrl) {
         expiresAt: Date.now() + segmentCacheTtlMs
       })
       segmentCacheBytes += size
+      segmentStats.cacheWrites += 1
       pruneSegmentCache()
     }
     return proxied
+  }).catch((error) => {
+    segmentStats.upstreamErrors += 1
+    throw error
   }).finally(() => {
     segmentInflight.delete(targetUrl)
   })
   segmentInflight.set(targetUrl, pending)
   const proxied = await pending
   return { ...proxied, cacheHit: false }
+}
+
+function segmentStatsPayload() {
+  const reusableRequests = segmentStats.memoryHits + segmentStats.inflightHits
+  return {
+    startedAt: segmentStats.startedAt,
+    uptimeSeconds: Math.max(0, Math.round((Date.now() - segmentStats.startedAt) / 1000)),
+    requests: segmentStats.requests,
+    memoryHits: segmentStats.memoryHits,
+    inflightHits: segmentStats.inflightHits,
+    reusableRequests,
+    cacheMisses: segmentStats.cacheMisses,
+    upstreamFetches: segmentStats.upstreamFetches,
+    upstreamBytes: segmentStats.upstreamBytes,
+    upstreamErrors: segmentStats.upstreamErrors,
+    cacheWrites: segmentStats.cacheWrites,
+    evictions: segmentStats.evictions,
+    bytesServedFromMemory: segmentStats.bytesServedFromMemory,
+    hitRate: segmentStats.requests ? Math.round((reusableRequests / segmentStats.requests) * 1000) / 10 : 0,
+    currentSegments: segmentCache.size,
+    currentBytes: Math.max(0, segmentCacheBytes),
+    inflightRequests: segmentInflight.size,
+    ttlSeconds: Math.round(segmentCacheTtlMs / 1000),
+    maxBytes: segmentCacheMaxBytes
+  }
 }
 
 function devicesPayload() {
@@ -322,6 +373,7 @@ function devicesPayload() {
   })).sort((a, b) => b.lastActiveAt - a.lastActiveAt)
   return {
     onlineCount: devices.filter((item) => item.online).length,
+    streamCache: segmentStatsPayload(),
     devices
   }
 }

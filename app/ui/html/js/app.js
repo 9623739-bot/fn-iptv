@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.30';
+  var APP_VERSION = '1.2.31';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -88,6 +88,17 @@
     return String(s).replace(/[&<>"']/g, function (m) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
     });
+  }
+  function fmtInt(n) {
+    n = Number(n || 0);
+    return n.toLocaleString ? n.toLocaleString('zh-CN') : String(n);
+  }
+  function fmtBytes(bytes) {
+    bytes = Number(bytes || 0);
+    if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
   }
   function isM3U(t) {
     if (!t) return false;
@@ -412,6 +423,17 @@
     }).then(function (data) {
       var list = data.devices || [];
       $('#devicesSummary').textContent = '当前在线 ' + (data.onlineCount || 0) + ' 台设备';
+      var cache = data.streamCache || {};
+      $('#devicesStats').innerHTML = [
+        ['上游拉取', fmtInt(cache.upstreamFetches) + ' 次'],
+        ['内存命中', fmtInt(cache.memoryHits) + ' 次'],
+        ['并发复用', fmtInt(cache.inflightHits) + ' 次'],
+        ['复用率', (cache.hitRate || 0) + '%'],
+        ['当前缓存', fmtInt(cache.currentSegments) + ' 片 / ' + fmtBytes(cache.currentBytes)],
+        ['缓存上限', fmtBytes(cache.maxBytes) + ' / ' + (cache.ttlSeconds || 0) + ' 秒']
+      ].map(function (item) {
+        return '<div><b>' + item[1] + '</b><span>' + item[0] + '</span></div>';
+      }).join('');
       var box = $('#devicesList');
       if (!list.length) {
         box.innerHTML = '<div class="empty compact">暂无播放设备</div>';
@@ -428,6 +450,7 @@
       }).join('');
     }).catch(function () {
       $('#devicesSummary').textContent = '在线设备加载失败';
+      $('#devicesStats').innerHTML = '';
       $('#devicesList').innerHTML = '';
     });
   }
