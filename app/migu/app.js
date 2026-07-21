@@ -15,6 +15,11 @@ const restartScheduleTypes = new Set(["off", "daily", "weekly", "monthly"])
 const onlineDevices = new Map()
 const onlineWindowMs = 60 * 1000
 const maxRestartTimerMs = 24 * 60 * 60 * 1000
+const segmentCacheTtlMs = 45 * 1000
+const segmentCacheMaxBytes = 256 * 1024 * 1024
+const segmentCache = new Map()
+const segmentInflight = new Map()
+let segmentCacheBytes = 0
 let restartTimer = null
 
 function normalizeRateType(value) {
@@ -212,6 +217,10 @@ function isLikelyPlaylistUrl(url) {
   return /\.m3u8(?:[?#]|$)/i.test(String(url || ""))
 }
 
+function isCacheableSegmentUrl(url) {
+  return /\.(ts|m4s|mp4|aac)(?:[?#]|$)/i.test(String(url || ""))
+}
+
 function touchDevice(req) {
   const ip = clientIp(req)
   const ua = shortUserAgent(req.headers["user-agent"])
@@ -238,6 +247,70 @@ function recordDevice(req, pid = "") {
     lastActiveAt: now,
     online: true
   })
+}
+
+function pruneSegmentCache() {
+  const now = Date.now()
+  for (const [key, item] of segmentCache) {
+    if (item.expiresAt <= now) {
+      segmentCache.delete(key)
+      segmentCacheBytes -= item.size
+    }
+  }
+  while (segmentCacheBytes > segmentCacheMaxBytes) {
+    const oldest = segmentCache.keys().next().value
+    if (!oldest) break
+    const item = segmentCache.get(oldest)
+    segmentCache.delete(oldest)
+    segmentCacheBytes -= item ? item.size : 0
+  }
+}
+
+function segmentCacheHeaders(proxied) {
+  return {
+    "Content-Type": proxied.contentType || "application/octet-stream",
+    "Cache-Control": "no-store",
+    "Content-Length": proxied.body.length,
+    "X-Fn-Iptv-Cache": proxied.cacheHit ? "HIT" : "MISS"
+  }
+}
+
+async function fetchSegmentCached(targetUrl) {
+  pruneSegmentCache()
+  const now = Date.now()
+  const cached = segmentCache.get(targetUrl)
+  if (cached && cached.expiresAt > now) {
+    segmentCache.delete(targetUrl)
+    segmentCache.set(targetUrl, cached)
+    return { ...cached.proxied, cacheHit: true }
+  }
+  if (segmentInflight.has(targetUrl)) {
+    const proxied = await segmentInflight.get(targetUrl)
+    return { ...proxied, cacheHit: true }
+  }
+  const pending = fetchFollow(targetUrl).then((proxied) => {
+    const size = proxied.body.length
+    const status = proxied.status || 200
+    if (status >= 200 && status < 300 && size > 0 && size <= segmentCacheMaxBytes) {
+      const previous = segmentCache.get(targetUrl)
+      if (previous) {
+        segmentCacheBytes -= previous.size
+      }
+      segmentCache.set(targetUrl, {
+        proxied,
+        size,
+        expiresAt: Date.now() + segmentCacheTtlMs
+      })
+      segmentCacheBytes += size
+      pruneSegmentCache()
+    }
+    return proxied
+  }).finally(() => {
+    segmentInflight.delete(targetUrl)
+  })
+  segmentInflight.set(targetUrl, pending)
+  const proxied = await pending
+  return { ...proxied, cacheHit: false }
 }
 
 function devicesPayload() {
@@ -400,6 +473,12 @@ async function sendProxiedUrl(res, targetUrl, req = null, pid = "") {
     "Content-Type": proxied.contentType || "application/octet-stream",
     "Cache-Control": "no-store"
   })
+  res.end(proxied.body)
+}
+
+async function sendCachedSegmentUrl(res, targetUrl) {
+  const proxied = await fetchSegmentCached(targetUrl)
+  res.writeHead(proxied.status || 200, segmentCacheHeaders(proxied))
   res.end(proxied.body)
 }
 
@@ -575,6 +654,9 @@ const server = http.createServer(async (req, res) => {
       const pid = new URL(targetUrl).searchParams.get("ProgramID") || ""
       if (isLikelyPlaylistUrl(targetUrl)) {
         await sendProxiedUrl(res, targetUrl, req, pid)
+      } else if (isCacheableSegmentUrl(targetUrl)) {
+        touchDevice(req)
+        await sendCachedSegmentUrl(res, targetUrl)
       } else {
         touchDevice(req)
         await sendProxiedUrl(res, targetUrl)
