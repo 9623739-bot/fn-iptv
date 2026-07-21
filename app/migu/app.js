@@ -234,6 +234,15 @@ function isCacheableSegmentUrl(url) {
   return /\.(ts|m4s|mp4|aac)(?:[?#]|$)/i.test(String(url || ""))
 }
 
+function segmentCacheKey(targetUrl) {
+  try {
+    const parsed = new URL(targetUrl)
+    return decodeURIComponent(parsed.pathname)
+  } catch (error) {
+    return String(targetUrl || "").split("?")[0]
+  }
+}
+
 function touchDevice(req) {
   const ip = clientIp(req)
   const ua = shortUserAgent(req.headers["user-agent"])
@@ -293,18 +302,19 @@ function segmentCacheHeaders(proxied) {
 async function fetchSegmentCached(targetUrl) {
   segmentStats.requests += 1
   pruneSegmentCache()
+  const cacheKey = segmentCacheKey(targetUrl)
   const now = Date.now()
-  const cached = segmentCache.get(targetUrl)
+  const cached = segmentCache.get(cacheKey)
   if (cached && cached.expiresAt > now) {
-    segmentCache.delete(targetUrl)
-    segmentCache.set(targetUrl, cached)
+    segmentCache.delete(cacheKey)
+    segmentCache.set(cacheKey, cached)
     segmentStats.memoryHits += 1
     segmentStats.bytesServedFromMemory += cached.size
     return { ...cached.proxied, cacheHit: true }
   }
-  if (segmentInflight.has(targetUrl)) {
+  if (segmentInflight.has(cacheKey)) {
     segmentStats.inflightHits += 1
-    const proxied = await segmentInflight.get(targetUrl)
+    const proxied = await segmentInflight.get(cacheKey)
     return { ...proxied, cacheHit: true }
   }
   segmentStats.cacheMisses += 1
@@ -314,11 +324,11 @@ async function fetchSegmentCached(targetUrl) {
     const status = proxied.status || 200
     segmentStats.upstreamBytes += size
     if (status >= 200 && status < 300 && size > 0 && size <= segmentCacheMaxBytes) {
-      const previous = segmentCache.get(targetUrl)
+      const previous = segmentCache.get(cacheKey)
       if (previous) {
         segmentCacheBytes -= previous.size
       }
-      segmentCache.set(targetUrl, {
+      segmentCache.set(cacheKey, {
         proxied,
         size,
         expiresAt: Date.now() + segmentCacheTtlMs
@@ -332,9 +342,9 @@ async function fetchSegmentCached(targetUrl) {
     segmentStats.upstreamErrors += 1
     throw error
   }).finally(() => {
-    segmentInflight.delete(targetUrl)
+    segmentInflight.delete(cacheKey)
   })
-  segmentInflight.set(targetUrl, pending)
+  segmentInflight.set(cacheKey, pending)
   const proxied = await pending
   return { ...proxied, cacheHit: false }
 }
