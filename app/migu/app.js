@@ -19,11 +19,15 @@ const deviceRetainMs = 6 * 60 * 60 * 1000
 const maxRestartTimerMs = 24 * 60 * 60 * 1000
 const segmentCacheTtlMs = 45 * 1000
 const segmentCacheMaxBytes = 256 * 1024 * 1024
-const relayPlaylistTtlMs = 1500
+const relayDelayMs = 10 * 1000
+const relayPollMs = 2 * 1000
+const relayPlaylistSegments = 6
+const relayMaxSegments = 24
 const relaySessionRetainMs = 10 * 60 * 1000
 const segmentCache = new Map()
 const segmentInflight = new Map()
 const relaySessions = new Map()
+const relaySessionIds = new Map()
 let segmentCacheBytes = 0
 const segmentStats = {
   startedAt: Date.now(),
@@ -390,6 +394,8 @@ function segmentStatsPayload() {
     currentSegments: segmentCache.size,
     currentBytes: Math.max(0, segmentCacheBytes),
     inflightRequests: segmentInflight.size,
+    relayChannels: relaySessions.size,
+    relaySegments: Array.from(relaySessions.values()).reduce((total, item) => total + item.segments.size, 0),
     ttlSeconds: Math.round(segmentCacheTtlMs / 1000),
     maxBytes: segmentCacheMaxBytes
   }
@@ -500,12 +506,59 @@ function rewritePlaylist(body, baseUrl) {
   }).join("\n")
 }
 
-function firstMediaLine(body) {
-  return body.toString("utf8").split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#")) || ""
-}
-
 function isMasterPlaylist(body) {
   return body.toString("utf8").includes("#EXT-X-STREAM-INF")
+}
+
+function mediaLines(body) {
+  return body.toString("utf8").split(/\r?\n/).map((line) => line.trim())
+}
+
+function firstMediaLine(body) {
+  return mediaLines(body).find((line) => line && !line.startsWith("#")) || ""
+}
+
+function relaySegmentId(url) {
+  return createHash("sha256").update(segmentCacheKey(url)).digest("hex").slice(0, 24)
+}
+
+function parseMediaPlaylist(body, baseUrl) {
+  const lines = mediaLines(body)
+  let targetDuration = 10
+  let mediaSequence = 0
+  let version = 3
+  let pendingDuration = 10
+  const segments = []
+  for (const line of lines) {
+    if (line.startsWith("#EXT-X-TARGETDURATION:")) {
+      targetDuration = parseFloat(line.split(":")[1]) || targetDuration
+      continue
+    }
+    if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
+      mediaSequence = parseInt(line.split(":")[1], 10) || 0
+      continue
+    }
+    if (line.startsWith("#EXT-X-VERSION:")) {
+      version = parseInt(line.split(":")[1], 10) || version
+      continue
+    }
+    if (line.startsWith("#EXTINF:")) {
+      pendingDuration = parseFloat(line.slice(8).split(",")[0]) || targetDuration
+      continue
+    }
+    if (line && !line.startsWith("#")) {
+      const url = new URL(line, baseUrl).href
+      const sequence = mediaSequence + segments.length
+      segments.push({
+        id: relaySegmentId(url),
+        sequence,
+        duration: pendingDuration,
+        url
+      })
+      pendingDuration = targetDuration
+    }
+  }
+  return { targetDuration, mediaSequence, version, segments }
 }
 
 async function fetchMediaPlaylist(playUrl, depth = 0) {
@@ -523,34 +576,143 @@ async function fetchMediaPlaylist(playUrl, depth = 0) {
   return proxied
 }
 
-async function relayPlaylist(relayKey, playUrl) {
+function delayedSegments(parsed) {
+  const delayCount = Math.max(1, Math.ceil(relayDelayMs / Math.max(1, parsed.targetDuration * 1000)))
+  if (parsed.segments.length <= delayCount) {
+    return parsed.segments.slice(0, 1)
+  }
+  return parsed.segments.slice(0, parsed.segments.length - delayCount)
+}
+
+function trimRelaySegments(session) {
+  while (session.order.length > relayMaxSegments) {
+    const id = session.order.shift()
+    session.segments.delete(id)
+  }
+}
+
+async function fetchRelaySegment(session, segment) {
+  if (session.segments.has(segment.id)) return
+  if (session.inflight.has(segment.id)) {
+    await session.inflight.get(segment.id)
+    return
+  }
+  segmentStats.cacheMisses += 1
+  segmentStats.upstreamFetches += 1
+  const pending = fetchFollow(segment.url).then((proxied) => {
+    const status = proxied.status || 200
+    const size = proxied.body.length
+    segmentStats.upstreamBytes += size
+    if (status >= 200 && status < 300 && size > 0) {
+      session.segments.set(segment.id, {
+        id: segment.id,
+        sequence: segment.sequence,
+        duration: segment.duration,
+        body: proxied.body,
+        contentType: proxied.contentType || "video/MP2T",
+        size,
+        createdAt: Date.now()
+      })
+      if (!session.order.includes(segment.id)) session.order.push(segment.id)
+      segmentStats.cacheWrites += 1
+      trimRelaySegments(session)
+    }
+  }).catch((error) => {
+    segmentStats.upstreamErrors += 1
+    throw error
+  }).finally(() => {
+    session.inflight.delete(segment.id)
+  })
+  session.inflight.set(segment.id, pending)
+  await pending
+}
+
+async function refreshRelaySession(session) {
+  if (session.refreshing) return
+  session.refreshing = true
+  try {
+    const proxied = await fetchMediaPlaylist(session.playUrl)
+    const parsed = parseMediaPlaylist(proxied.body, proxied.finalUrl)
+    session.targetDuration = parsed.targetDuration
+    session.version = parsed.version
+    session.lastPlaylistAt = Date.now()
+    const eligible = delayedSegments(parsed)
+    await Promise.all(eligible.map((segment) => fetchRelaySegment(session, segment)))
+  } finally {
+    session.refreshing = false
+  }
+}
+
+function stopRelaySession(session) {
+  if (session.timer) clearInterval(session.timer)
+  relaySessions.delete(session.key)
+  relaySessionIds.delete(session.id)
+}
+
+function startRelaySession(relayKey, playUrl) {
   const now = Date.now()
   for (const [key, item] of relaySessions) {
     if (now - item.lastAccessAt > relaySessionRetainMs) {
-      relaySessions.delete(key)
+      stopRelaySession(item)
     }
   }
   let session = relaySessions.get(relayKey)
   if (!session || session.playUrl !== playUrl) {
-    session = { playUrl, body: "", expiresAt: 0, pending: null, lastAccessAt: now }
+    if (session) stopRelaySession(session)
+    session = {
+      key: relayKey,
+      id: createHash("sha256").update(relayKey).digest("hex").slice(0, 16),
+      playUrl,
+      targetDuration: 10,
+      version: 3,
+      segments: new Map(),
+      inflight: new Map(),
+      order: [],
+      refreshing: false,
+      lastAccessAt: now,
+      lastPlaylistAt: 0,
+      timer: null
+    }
     relaySessions.set(relayKey, session)
+    relaySessionIds.set(session.id, relayKey)
+    refreshRelaySession(session).catch((error) => printRed(error.message))
+    session.timer = setInterval(() => {
+      if (Date.now() - session.lastAccessAt > relaySessionRetainMs) {
+        stopRelaySession(session)
+        return
+      }
+      refreshRelaySession(session).catch((error) => printRed(error.message))
+    }, relayPollMs)
   }
   session.lastAccessAt = now
-  if (session.body && session.expiresAt > now) {
-    return session.body
+  return session
+}
+
+async function relayPlaylist(relayKey, playUrl) {
+  const session = startRelaySession(relayKey, playUrl)
+  if (!session.order.length) {
+    await refreshRelaySession(session)
   }
-  if (session.pending) {
-    return session.pending
+  return relayPlaylistBody(session)
+}
+
+function relayPlaylistBody(session) {
+  const ids = session.order.slice(-relayPlaylistSegments)
+  const first = session.segments.get(ids[0])
+  const mediaSequence = first ? first.sequence : 0
+  const lines = [
+    "#EXTM3U",
+    `#EXT-X-VERSION:${session.version || 3}`,
+    `#EXT-X-TARGETDURATION:${Math.ceil(session.targetDuration || 10)}`,
+    `#EXT-X-MEDIA-SEQUENCE:${mediaSequence}`
+  ]
+  for (const id of ids) {
+    const item = session.segments.get(id)
+    if (!item) continue
+    lines.push(`#EXTINF:${Number(item.duration || session.targetDuration || 10).toFixed(6)},`)
+    lines.push(`/migu/relay/${session.id}/${item.id}`)
   }
-  session.pending = fetchMediaPlaylist(playUrl).then((proxied) => {
-    const body = rewritePlaylist(proxied.body, proxied.finalUrl)
-    session.body = body
-    session.expiresAt = Date.now() + relayPlaylistTtlMs
-    return body
-  }).finally(() => {
-    session.pending = null
-  })
-  return session.pending
+  return lines.join("\n") + "\n"
 }
 
 async function fetchFollow(url, maxRedirects = 6) {
@@ -627,6 +789,28 @@ async function sendRelayPlaylist(res, relayKey, playUrl) {
     "X-Fn-Iptv-Stream-Mode": "relay"
   })
   res.end(body)
+}
+
+function sendRelaySegment(res, sessionId, segmentId) {
+  const relayKey = relaySessionIds.get(sessionId)
+  const session = relayKey ? relaySessions.get(relayKey) : null
+  const item = session ? session.segments.get(segmentId) : null
+  if (!session || !item) {
+    res.writeHead(404, { "Content-Type": "text/plain;charset=UTF-8" })
+    res.end("relay segment not found")
+    return
+  }
+  session.lastAccessAt = Date.now()
+  segmentStats.requests += 1
+  segmentStats.memoryHits += 1
+  segmentStats.bytesServedFromMemory += item.size
+  res.writeHead(200, {
+    "Content-Type": item.contentType || "video/MP2T",
+    "Cache-Control": "no-store",
+    "Content-Length": item.body.length,
+    "X-Fn-Iptv-Cache": "RELAY"
+  })
+  res.end(item.body)
 }
 
 const server = http.createServer(async (req, res) => {
@@ -798,6 +982,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   const interfaceList = "/,/interface.txt,/m3u,/txt,/playback.xml,/main.m3u"
+
+  if (url.startsWith("/relay/")) {
+    const parts = url.split("/")
+    sendRelaySegment(res, parts[2] || "", parts[3] || "")
+    return
+  }
 
   if (url.startsWith("/proxy?")) {
     try {

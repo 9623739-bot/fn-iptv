@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.34 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.35 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -108,7 +108,7 @@
             <option value="cache">兼容模式</option>
             <option value="relay">频道中继模式</option>
           </select>
-          <small class="field-note">兼容模式稳定性最好；频道中继模式会让同一频道共享服务端播放列表和分片缓存，多设备观看时更省上游流量。</small>
+          <small class="field-note">兼容模式稳定性最好；频道中继模式会让同一频道由服务器单路拉流并延迟约 10 秒统一分发，多设备观看时更省上游流量。</small>
         </label>
         <div class="setting-block">
           <label class="check-line"><input id="setLowLatencyMode" type="checkbox" /> 低延迟模式</label>
@@ -208,6 +208,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.34"></script>
+  <script src="js/app.js?v=1.2.35"></script>
 </body>
 </html>

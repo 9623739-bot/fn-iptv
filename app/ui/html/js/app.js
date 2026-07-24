@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.34';
+  var APP_VERSION = '1.2.35';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -434,6 +434,7 @@
         ['并发复用', fmtInt(cache.inflightHits) + ' 次'],
         ['复用率', (cache.hitRate || 0) + '%'],
         ['当前缓存', fmtInt(cache.currentSegments) + ' 片 / ' + fmtBytes(cache.currentBytes)],
+        ['中继队列', fmtInt(cache.relayChannels) + ' 频道 / ' + fmtInt(cache.relaySegments) + ' 片'],
         ['缓存上限', fmtBytes(cache.maxBytes) + ' / ' + (cache.ttlSeconds || 0) + ' 秒']
       ].map(function (item) {
         return '<div><b>' + item[1] + '</b><span>' + item[0] + '</span></div>';
