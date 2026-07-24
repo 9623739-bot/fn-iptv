@@ -614,6 +614,11 @@ async function fetchRelaySegment(session, segment) {
         createdAt: Date.now()
       })
       if (!session.order.includes(segment.id)) session.order.push(segment.id)
+      session.order.sort((a, b) => {
+        const left = session.segments.get(a)
+        const right = session.segments.get(b)
+        return (left ? left.sequence : 0) - (right ? right.sequence : 0)
+      })
       segmentStats.cacheWrites += 1
       trimRelaySegments(session)
     }
@@ -702,7 +707,11 @@ async function relayPlaylist(relayKey, playUrl) {
 }
 
 function relayPlaylistBody(session) {
-  const ids = session.order.slice(-relayPlaylistSegments)
+  const ids = session.order.slice(-relayPlaylistSegments).sort((a, b) => {
+    const left = session.segments.get(a)
+    const right = session.segments.get(b)
+    return (left ? left.sequence : 0) - (right ? right.sequence : 0)
+  })
   const first = session.segments.get(ids[0])
   const mediaSequence = first ? first.sequence : 0
   const lines = [
