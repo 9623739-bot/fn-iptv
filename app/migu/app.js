@@ -628,9 +628,9 @@ async function fetchRelaySegment(session, segment) {
 }
 
 async function refreshRelaySession(session) {
-  if (session.refreshing) return
+  if (session.refreshing) return session.refreshPromise
   session.refreshing = true
-  try {
+  session.refreshPromise = (async () => {
     const proxied = await fetchMediaPlaylist(session.playUrl)
     const parsed = parseMediaPlaylist(proxied.body, proxied.finalUrl)
     session.targetDuration = parsed.targetDuration
@@ -638,8 +638,12 @@ async function refreshRelaySession(session) {
     session.lastPlaylistAt = Date.now()
     const eligible = delayedSegments(parsed)
     await Promise.all(eligible.map((segment) => fetchRelaySegment(session, segment)))
+  })()
+  try {
+    await session.refreshPromise
   } finally {
     session.refreshing = false
+    session.refreshPromise = null
   }
 }
 
@@ -669,6 +673,7 @@ function startRelaySession(relayKey, playUrl) {
       inflight: new Map(),
       order: [],
       refreshing: false,
+      refreshPromise: null,
       lastAccessAt: now,
       lastPlaylistAt: 0,
       timer: null
@@ -835,6 +840,12 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.startsWith("/relay/")) {
+    const parts = url.split("/")
+    sendRelaySegment(res, parts[2] || "", parts[3] || "")
+    return
+  }
+
   let urlToken = ""
   let urlUserId = ""
   let currentConfig = currentCreds()
@@ -982,12 +993,6 @@ const server = http.createServer(async (req, res) => {
   }
 
   const interfaceList = "/,/interface.txt,/m3u,/txt,/playback.xml,/main.m3u"
-
-  if (url.startsWith("/relay/")) {
-    const parts = url.split("/")
-    sendRelaySegment(res, parts[2] || "", parts[3] || "")
-    return
-  }
 
   if (url.startsWith("/proxy?")) {
     try {
