@@ -24,16 +24,27 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 0
 fi
 
+if ! docker info >/dev/null 2>&1; then
+  log "docker daemon is not accessible, skip preload"
+  exit 0
+fi
+
 loaded=0
 for image_file in "$image_dir"/*.tar "$image_dir"/*.tar.gz "$image_dir"/*.tgz; do
   [ -f "$image_file" ] || continue
   log "loading docker image: $image_file"
   case "$image_file" in
     *.tar.gz|*.tgz)
-      gzip -dc "$image_file" | docker load >/dev/null || exit 1
+      if ! gzip -dc "$image_file" | docker load >/dev/null; then
+        log "failed to load docker image, skip: $image_file"
+        continue
+      fi
       ;;
     *.tar)
-      docker load -i "$image_file" >/dev/null || exit 1
+      if ! docker load -i "$image_file" >/dev/null; then
+        log "failed to load docker image, skip: $image_file"
+        continue
+      fi
       ;;
   esac
   loaded=$((loaded + 1))

@@ -1,6 +1,6 @@
 #!/bin/bash
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-sh "$script_dir/preload_images" || exit 1
+sh "$script_dir/preload_images" || true
 
 exit 0
