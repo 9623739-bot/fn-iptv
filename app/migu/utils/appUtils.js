@@ -6,6 +6,8 @@ import { printDebug, printGreen, printGrey, printRed, printYellow } from "./colo
 
 // url缓存 降低请求频率
 const urlCache = {}
+const preferredRateCache = {}
+const autoRateTypes = ["9", "7", "4", "3", "2"]
 
 function cacheScope(urlUserId, urlToken) {
   if (!urlUserId || !urlToken) return "anonymous"
@@ -26,7 +28,7 @@ function normalizeFetchError(error) {
   return error
 }
 
-async function fetchTextWithTimeout(url, options = {}, timeoutMs = 8000) {
+async function fetchTextWithTimeout(url, options = {}, timeoutMs = 5000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -61,7 +63,7 @@ async function validatePlaylistUrl(playUrl, depth = 0) {
   const mediaUrl = new URL(mediaLine, response.url || playUrl).href
   if (/\.m3u8(\?|$)/i.test(mediaUrl)) return validatePlaylistUrl(mediaUrl, depth + 1)
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 8000)
+  const timer = setTimeout(() => controller.abort(), 3000)
   try {
     const segmentResponse = await fetch(mediaUrl, {
       cache: "no-store",
@@ -81,6 +83,13 @@ async function validatePlaylistUrl(playUrl, depth = 0) {
   } finally {
     clearTimeout(timer)
   }
+}
+
+function prioritizedAutoRates(preferredRateType) {
+  if (!preferredRateType || !autoRateTypes.includes(preferredRateType)) {
+    return autoRateTypes
+  }
+  return [preferredRateType].concat(autoRateTypes.filter((item) => item !== preferredRateType))
 }
 
 function interfaceStr(url, headers, urlUserId, urlToken) {
@@ -166,7 +175,9 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
     printGrey("无参数传入")
   }
 
-  const cacheKey = `${pid}:${params}:${selectedRateType}:${cacheScope(urlUserId, urlToken)}`
+  const accountScope = cacheScope(urlUserId, urlToken)
+  const cacheKey = `${pid}:${params}:${selectedRateType}:${accountScope}`
+  const preferredRateKey = `${pid}:${accountScope}`
 
   if (isNaN(pid)) {
     result.desc = "地址格式错误"
@@ -185,7 +196,7 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
   }
 
   let resObj = {}
-  const requestedRateTypes = selectedRateType === "auto" ? ["9", "7", "4", "3", "2"] : [selectedRateType]
+  const requestedRateTypes = selectedRateType === "auto" ? prioritizedAutoRates(preferredRateCache[preferredRateKey]) : [selectedRateType]
   try {
     for (const rateType of requestedRateTypes) {
       printYellow(`尝试清晰度 ${rateType}`)
@@ -215,6 +226,9 @@ async function channel(url, urlUserId, urlToken, runtimeRateType) {
           }
         }
         printGreen(`清晰度 ${rateType} 获取成功`)
+        if (selectedRateType === "auto") {
+          preferredRateCache[preferredRateKey] = rateType
+        }
         break
       }
       printYellow(`清晰度 ${rateType} 获取失败，尝试降级`)

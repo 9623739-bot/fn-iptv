@@ -14,6 +14,7 @@ const rateTypes = new Set(["auto", "2", "3", "4", "7", "9"])
 const restartScheduleTypes = new Set(["off", "daily", "weekly", "monthly"])
 const onlineDevices = new Map()
 const onlineWindowMs = 60 * 1000
+const deviceRetainMs = 6 * 60 * 60 * 1000
 const maxRestartTimerMs = 24 * 60 * 60 * 1000
 const segmentCacheTtlMs = 45 * 1000
 const segmentCacheMaxBytes = 256 * 1024 * 1024
@@ -244,6 +245,7 @@ function segmentCacheKey(targetUrl) {
 }
 
 function touchDevice(req) {
+  pruneOnlineDevices()
   const ip = clientIp(req)
   const ua = shortUserAgent(req.headers["user-agent"])
   const id = `${ip}|${ua}`
@@ -255,6 +257,7 @@ function touchDevice(req) {
 }
 
 function recordDevice(req, pid = "") {
+  pruneOnlineDevices()
   const ip = clientIp(req)
   const ua = shortUserAgent(req.headers["user-agent"])
   const id = `${ip}|${ua}`
@@ -269,6 +272,14 @@ function recordDevice(req, pid = "") {
     lastActiveAt: now,
     online: true
   })
+}
+
+function pruneOnlineDevices(now = Date.now()) {
+  for (const [id, item] of onlineDevices) {
+    if (now - item.lastActiveAt > deviceRetainMs) {
+      onlineDevices.delete(id)
+    }
+  }
 }
 
 function pruneSegmentCache() {
@@ -376,6 +387,7 @@ function segmentStatsPayload() {
 
 function devicesPayload() {
   const now = Date.now()
+  pruneOnlineDevices(now)
   const devices = Array.from(onlineDevices.values()).map((item) => ({
     ...item,
     online: now - item.lastActiveAt <= onlineWindowMs,
