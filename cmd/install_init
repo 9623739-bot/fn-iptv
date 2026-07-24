@@ -1,4 +1,6 @@
 #!/bin/bash
 
-# 当前版本不再内置离线列表源镜像，安装前无需额外初始化。
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+sh "$script_dir/preload_images" || exit 1
+
 exit 0

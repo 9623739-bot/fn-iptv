@@ -1,0 +1,48 @@
+#!/bin/bash
+set -u
+
+log() {
+  printf '[fn-iptv] %s\n' "$*"
+}
+
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+app_dir="${script_dir%/cmd}/target"
+
+if [ ! -d "$app_dir/docker/images" ]; then
+  app_dir="/vol1/@appcenter/fn-iptv"
+fi
+
+image_dir="$app_dir/docker/images"
+
+if [ ! -d "$image_dir" ]; then
+  log "docker image directory not found, skip preload"
+  exit 0
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  log "docker command not found, skip preload"
+  exit 0
+fi
+
+loaded=0
+for image_file in "$image_dir"/*.tar "$image_dir"/*.tar.gz "$image_dir"/*.tgz; do
+  [ -f "$image_file" ] || continue
+  log "loading docker image: $image_file"
+  case "$image_file" in
+    *.tar.gz|*.tgz)
+      gzip -dc "$image_file" | docker load >/dev/null || exit 1
+      ;;
+    *.tar)
+      docker load -i "$image_file" >/dev/null || exit 1
+      ;;
+  esac
+  loaded=$((loaded + 1))
+done
+
+if [ "$loaded" -eq 0 ]; then
+  log "no bundled docker images found"
+else
+  log "preloaded $loaded docker image archive(s)"
+fi
+
+exit 0
