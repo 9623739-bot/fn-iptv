@@ -11,6 +11,7 @@ import { channel, clearChannelCache, interfaceStr } from "./utils/appUtils.js";
 var hours = 0
 const runtimeConfigPath = process.env.FN_IPTV_MIGU_CONFIG || "/migu-data/config.json"
 const rateTypes = new Set(["auto", "2", "3", "4", "7", "9"])
+const streamModes = new Set(["cache", "relay"])
 const restartScheduleTypes = new Set(["off", "daily", "weekly", "monthly"])
 const onlineDevices = new Map()
 const onlineWindowMs = 60 * 1000
@@ -18,8 +19,11 @@ const deviceRetainMs = 6 * 60 * 60 * 1000
 const maxRestartTimerMs = 24 * 60 * 60 * 1000
 const segmentCacheTtlMs = 45 * 1000
 const segmentCacheMaxBytes = 256 * 1024 * 1024
+const relayPlaylistTtlMs = 1500
+const relaySessionRetainMs = 10 * 60 * 1000
 const segmentCache = new Map()
 const segmentInflight = new Map()
+const relaySessions = new Map()
 let segmentCacheBytes = 0
 const segmentStats = {
   startedAt: Date.now(),
@@ -39,6 +43,11 @@ let restartTimer = null
 function normalizeRateType(value) {
   const next = String(value || "auto").trim()
   return rateTypes.has(next) ? next : "auto"
+}
+
+function normalizeStreamMode(value) {
+  const next = String(value || "cache").trim()
+  return streamModes.has(next) ? next : "cache"
 }
 
 function normalizeRestartIntervalHours(value) {
@@ -143,6 +152,7 @@ function currentCreds() {
     userId: String(hasUserId ? config.userId : (userId || "")).trim(),
     token: String(hasToken ? config.token : (token || "")).trim(),
     rateType: normalizeRateType(config.rateType),
+    streamMode: normalizeStreamMode(config.streamMode),
     hiddenGroups: parseHiddenGroups(config.hiddenGroups),
     lowLatencyMode: normalizeBoolean(config.lowLatencyMode),
     restartIntervalHours: normalizeRestartIntervalHours(config.restartIntervalHours),
@@ -490,6 +500,59 @@ function rewritePlaylist(body, baseUrl) {
   }).join("\n")
 }
 
+function firstMediaLine(body) {
+  return body.toString("utf8").split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#")) || ""
+}
+
+function isMasterPlaylist(body) {
+  return body.toString("utf8").includes("#EXT-X-STREAM-INF")
+}
+
+async function fetchMediaPlaylist(playUrl, depth = 0) {
+  if (depth > 2) throw new Error("relay playlist depth exceeded")
+  const proxied = await fetchFollow(playUrl)
+  if (!isPlaylist(proxied.contentType, proxied.finalUrl, proxied.body)) {
+    return proxied
+  }
+  if (isMasterPlaylist(proxied.body)) {
+    const mediaLine = firstMediaLine(proxied.body)
+    if (mediaLine && /\.m3u8(?:[?#]|$)/i.test(mediaLine)) {
+      return fetchMediaPlaylist(new URL(mediaLine, proxied.finalUrl).href, depth + 1)
+    }
+  }
+  return proxied
+}
+
+async function relayPlaylist(relayKey, playUrl) {
+  const now = Date.now()
+  for (const [key, item] of relaySessions) {
+    if (now - item.lastAccessAt > relaySessionRetainMs) {
+      relaySessions.delete(key)
+    }
+  }
+  let session = relaySessions.get(relayKey)
+  if (!session || session.playUrl !== playUrl) {
+    session = { playUrl, body: "", expiresAt: 0, pending: null, lastAccessAt: now }
+    relaySessions.set(relayKey, session)
+  }
+  session.lastAccessAt = now
+  if (session.body && session.expiresAt > now) {
+    return session.body
+  }
+  if (session.pending) {
+    return session.pending
+  }
+  session.pending = fetchMediaPlaylist(playUrl).then((proxied) => {
+    const body = rewritePlaylist(proxied.body, proxied.finalUrl)
+    session.body = body
+    session.expiresAt = Date.now() + relayPlaylistTtlMs
+    return body
+  }).finally(() => {
+    session.pending = null
+  })
+  return session.pending
+}
+
 async function fetchFollow(url, maxRedirects = 6) {
   let current = url
   for (let i = 0; i <= maxRedirects; i++) {
@@ -556,6 +619,16 @@ async function sendCachedSegmentUrl(res, targetUrl) {
   res.end(proxied.body)
 }
 
+async function sendRelayPlaylist(res, relayKey, playUrl) {
+  const body = await relayPlaylist(relayKey, playUrl)
+  res.writeHead(200, {
+    "Content-Type": "application/vnd.apple.mpegurl;charset=UTF-8",
+    "Cache-Control": "no-store",
+    "X-Fn-Iptv-Stream-Mode": "relay"
+  })
+  res.end(body)
+}
+
 const server = http.createServer(async (req, res) => {
   // 获取请求方法、URL 和请求头
   let { method, url, headers } = req;
@@ -582,6 +655,7 @@ const server = http.createServer(async (req, res) => {
   let urlUserId = ""
   let currentConfig = currentCreds()
   let urlRateType = currentConfig.rateType
+  let streamMode = currentConfig.streamMode
   let hiddenGroups = currentConfig.hiddenGroups
   let showAllGroups = false
   // 匹配是否存在用户信息
@@ -597,6 +671,7 @@ const server = http.createServer(async (req, res) => {
     urlUserId = currentConfig.userId
     urlToken = currentConfig.token
     urlRateType = currentConfig.rateType
+    streamMode = currentConfig.streamMode
     hiddenGroups = currentConfig.hiddenGroups
   }
 
@@ -628,6 +703,7 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({
           configured: !!(creds.userId && creds.token),
           rateType: creds.rateType,
+          streamMode: creds.streamMode,
           hiddenGroups: creds.hiddenGroups.join(","),
           lowLatencyMode: creds.lowLatencyMode,
           restartIntervalHours: creds.restartIntervalHours,
@@ -647,6 +723,7 @@ const server = http.createServer(async (req, res) => {
           ? ""
           : String(body.token || oldConfig.token || token || "").trim()
         const nextRateType = normalizeRateType(body.rateType)
+        const nextStreamMode = normalizeStreamMode(body.streamMode)
         const nextHiddenGroups = Object.prototype.hasOwnProperty.call(body, "hiddenGroups")
           ? parseHiddenGroups(body.hiddenGroups)
           : parseHiddenGroups(oldConfig.hiddenGroups)
@@ -660,6 +737,7 @@ const server = http.createServer(async (req, res) => {
           userId: nextUserId,
           token: nextToken,
           rateType: nextRateType,
+          streamMode: nextStreamMode,
           hiddenGroups: nextHiddenGroups,
           lowLatencyMode: nextLowLatencyMode,
           restartIntervalHours: nextRestartIntervalHours,
@@ -669,12 +747,14 @@ const server = http.createServer(async (req, res) => {
           restartScheduleTime: nextRestartScheduleTime
         })
         clearChannelCache()
+        relaySessions.clear()
         scheduleRestart()
         res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({
           ok: true,
           configured: !!(nextUserId && nextToken),
           rateType: nextRateType,
+          streamMode: nextStreamMode,
           hiddenGroups: nextHiddenGroups.join(","),
           lowLatencyMode: nextLowLatencyMode,
           restartIntervalHours: nextRestartIntervalHours,
@@ -780,7 +860,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    await sendProxiedUrl(res, result.playURL, req, pid)
+    if (streamMode === "relay") {
+      await sendRelayPlaylist(res, `${pid}:${urlRateType}`, result.playURL)
+    } else {
+      await sendProxiedUrl(res, result.playURL, req, pid)
+    }
   } catch (error) {
     printRed(error.message)
     res.writeHead(502, { 'Content-Type': 'application/json;charset=UTF-8' });

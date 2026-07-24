@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2.33';
+  var APP_VERSION = '1.2.34';
   var UPDATE_MANIFEST_API = 'https://api.github.com/repos/9623739-bot/fn-iptv/contents/manifest?ref=main';
   var UPDATE_DOWNLOAD_URL = 'https://github.com/9623739-bot/fn-iptv/raw/main/fn-iptv_x86.fpk';
 
@@ -11,6 +11,7 @@
     miguUserId: '',
     miguToken: '',
     miguRateType: 'auto',
+    streamMode: 'cache',
     lowLatencyMode: false,
     miguHiddenGroups: '',
     epg: '/migu/playback.xml',
@@ -309,6 +310,7 @@
         userId: miguUserId(),
         token: miguToken(),
         rateType: miguRateType(),
+        streamMode: SET.streamMode || 'cache',
         lowLatencyMode: SET.lowLatencyMode === true,
         hiddenGroups: miguHiddenGroups(),
         restartIntervalHours: SET.restartIntervalHours || '',
@@ -324,6 +326,7 @@
     }).then(function (cfg) {
       STATE.serverConfigured = !!(cfg.configured || (!options.clearCredentials && STATE.serverConfigured && (!miguUserId() || !miguToken())) || (miguUserId() && miguToken()));
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
+      if (cfg.streamMode) SET.streamMode = String(cfg.streamMode);
       if (typeof cfg.lowLatencyMode !== 'undefined') SET.lowLatencyMode = cfg.lowLatencyMode === true;
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
@@ -342,6 +345,7 @@
     }).then(function (cfg) {
       STATE.serverConfigured = !!cfg.configured;
       if (cfg.rateType) SET.miguRateType = String(cfg.rateType);
+      if (cfg.streamMode) SET.streamMode = String(cfg.streamMode);
       if (typeof cfg.lowLatencyMode !== 'undefined') SET.lowLatencyMode = cfg.lowLatencyMode === true;
       if (typeof cfg.hiddenGroups === 'string') SET.miguHiddenGroups = cfg.hiddenGroups;
       if (typeof cfg.restartIntervalHours !== 'undefined') SET.restartIntervalHours = String(cfg.restartIntervalHours || '');
@@ -706,6 +710,7 @@
     $('#setPort').value = SET.port || location.port || '8510';
     $('#setMiguCredential').value = combinedMiguCredential();
     $('#setMiguRateType').value = miguRateType();
+    $('#setStreamMode').value = SET.streamMode || 'cache';
     $('#setLowLatencyMode').checked = SET.lowLatencyMode === true;
     $('#setRestartInterval').value = SET.restartIntervalHours || '';
     $('#setRestartScheduleType').value = normalizeScheduleType(SET.restartScheduleType);
@@ -719,6 +724,7 @@
     $('#settingsModal').setAttribute('aria-hidden', 'false');
     loadMiguServerConfig().then(function () {
       $('#setMiguRateType').value = miguRateType();
+      $('#setStreamMode').value = SET.streamMode || 'cache';
       $('#setLowLatencyMode').checked = SET.lowLatencyMode === true;
       $('#setRestartInterval').value = SET.restartIntervalHours || '';
       $('#setRestartScheduleType').value = normalizeScheduleType(SET.restartScheduleType);
@@ -749,6 +755,7 @@
       SET.miguToken = parsed.token;
     }
     SET.miguRateType = $('#setMiguRateType').value || 'auto';
+    SET.streamMode = $('#setStreamMode').value || 'cache';
     SET.lowLatencyMode = $('#setLowLatencyMode').checked === true;
     SET.miguHiddenGroups = readHiddenGroupChecks();
     SET.epg = $('#setEpg').value.trim();

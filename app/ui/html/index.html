@@ -16,7 +16,7 @@
       <img class="logo" src="images/icon_64.png" alt="" />
       <div>
         <h1>飞牛 IPTV 管家</h1>
-        <span class="ver">v1.2.33 · FnOS 第三方应用</span>
+        <span class="ver">v1.2.34 · FnOS 第三方应用</span>
       </div>
     </div>
     <div class="top-actions">
@@ -102,6 +102,13 @@
             <option value="9">4K</option>
           </select>
           <small class="field-note">备注：自动会从 4K、原画、蓝光、高清、标清依次尝试；高清以上需要开通咪咕会员。</small>
+        </label>
+        <label>播放模式
+          <select id="setStreamMode">
+            <option value="cache">兼容模式</option>
+            <option value="relay">频道中继模式</option>
+          </select>
+          <small class="field-note">兼容模式稳定性最好；频道中继模式会让同一频道共享服务端播放列表和分片缓存，多设备观看时更省上游流量。</small>
         </label>
         <div class="setting-block">
           <label class="check-line"><input id="setLowLatencyMode" type="checkbox" /> 低延迟模式</label>
@@ -201,6 +208,6 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="js/app.js?v=1.2.33"></script>
+  <script src="js/app.js?v=1.2.34"></script>
 </body>
 </html>
